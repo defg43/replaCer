@@ -9,6 +9,8 @@
 
 #define lengthof(array) (sizeof(array)/sizeof((array)[0]))
 
+int printfi(char *fmt, ...);
+
 typedef struct { char * key; char *value; } replacement_pair;
 
 #define printn(fmt, ...) printn_count(fmt, (const char *[]){__VA_ARGS__}, \
