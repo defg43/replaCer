@@ -5,11 +5,61 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include "map.h"
-#include "asprintf.h"
+// todo: reorganize asprintf and make va_list by ref
+
+int asprintf (char **str, const char *fmt, ...) {
+  int size = 0;
+  va_list args;
+
+  // init variadic argumens
+  va_start(args, fmt);
+
+  // format and get size
+  size = vasprintf(str, fmt, args);
+
+  // toss args
+  va_end(args);
+
+  return size;
+}
+
+int vasprintf (char **str, const char *fmt, va_list args) {
+  int size = 0;
+  va_list tmpa;
+
+  // copy
+  va_copy(tmpa, args);
+
+  // apply variadic arguments to
+  // sprintf with format to get size
+  size = vsnprintf(NULL, 0, fmt, tmpa);
+
+  // toss args
+  va_end(tmpa);
+
+  // return -1 to be compliant if
+  // size is less than 0
+  if (size < 0) { return -1; }
+
+  // alloc with size plus 1 for `\0'
+  *str = (char *) malloc(size + 1);
+
+  // return -1 to be compliant
+  // if pointer is `NULL'
+  if (NULL == *str) { return -1; }
+
+  // format string with original
+  // variadic arguments and set new size
+  size = vsprintf(*str, fmt, args);
+  return size;
+} // end of asprintf
+
 
 #define lengthof(array) (sizeof(array)/sizeof((array)[0]))
 
-int printfi(char *fmt, ...);
+int printfi(char *fmt, size_t count, ...);
+char *format(char *fmt, size_t count, ...);
+char *vformat(char *fmt, size_t count, va_list *args);
 
 typedef struct { char * key; char *value; } replacement_pair;
 
@@ -37,7 +87,8 @@ char *getIdentifier(char *in) {
 	return substring(in, getIdentifierIndex(in));
 }
 
-#define _generic_format(ptr, x) _Generic((x), \
+#define _generic_format(ptr, x) \
+		_Generic((x), \
 		char: asprintf(ptr, "%c", x), \
 	    unsigned char: asprintf(ptr, "%u", x), \
 	    short: asprintf(ptr, "%hd", x), \
@@ -53,30 +104,20 @@ char *getIdentifier(char *in) {
 	    long double: asprintf(ptr, "%Lf", x), \
 	    char *: asprintf(ptr, "%s", x), \
 	    default: (-1) \
-	)
+	)	
 
 #define createReplacementPair(in) 							\
-	({ 	char *temp;	typeof(in) _in; _in = in;				\
+	({ 														\
+		_Pragma("GCC diagnostic push"); 					\
+		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	\
+		char *temp;	typeof(in) _in; _in = in;				\
 		_generic_format(&temp, _in);						\
+		_Pragma("GCC diagnostic pop");						\
 		replacement_pair ret = (replacement_pair) { 		\
 			.key = getIdentifier(#in),						\
 			.value = temp									\
 		};													\
 		ret; }),
-
-
-void printn_count(const char *fmt, const char **strings, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-        printf("%s ", strings[i]);
-    }
-    printf("\n");
-}
-
-#define format(fmt, ...) 												 \
-	format_impl2(fmt, 													 \
-	lengthof((replacement_pair[]) 										 \
-	{MAP(createReplacementPair, __VA_ARGS__)}), \
-	MAP(createReplacementPair, __VA_ARGS__) NULL)
 
 char *strstrTag(char *haystack, char *needle, size_t offset) {
     int needle_len = strlen(needle);
@@ -102,25 +143,56 @@ char *strstrTag(char *haystack, char *needle, size_t offset) {
     return NULL;
 }
 	
-char *format_impl2(char *fmt, size_t count, ...) {
+char *format(char *fmt, size_t count, ...) {
+    char *output;
+    va_list args;
+    va_start(args, count);
+   	output = vformat(fmt, count, &args);
+    va_end(args);
+    return output;
+}
+
+#define format(fmt, ...) 												 \
+	format(fmt, 														 \
+	lengthof((replacement_pair[]) 										 \
+	{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
+	MAP(createReplacementPair, __VA_ARGS__) 0)
+
+int printfi(char *fmt, size_t count, ...) {
+	va_list args;
+	va_start(args, count);
+	char *output = vformat(fmt, count, &args);
+	int output_length = strlen(output);
+	fputs(output, stdout);
+	va_end(args);
+	free(output);
+	return output_length;
+}
+
+#define printfi(fmt, ...) 												 \
+		printfi(fmt, 														 \
+		lengthof((replacement_pair[]) 										 \
+		{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
+		MAP(createReplacementPair, __VA_ARGS__) 0)
+
+char *vformat(char *fmt, size_t count, va_list *args) {
     replacement_pair *rep_pairs;
     char *output;
     size_t output_length = 0;
-  
-    va_list args;
-    va_start(args, count);
+  	va_list args_copy;
+    va_copy(args_copy, *args);
     rep_pairs = malloc(count * sizeof(replacement_pair));
     for(size_t i = 0; i < count; i++) {
-        rep_pairs[i] = va_arg(args, replacement_pair);    
+        rep_pairs[i] = va_arg(args_copy, replacement_pair);    
     }
-    va_end(args);
+    va_end(args_copy);
     // calculate the length of the final string
     size_t index = 0;
     char *tag_ptr;
     while(fmt[index] != '\0') {
         int found = 0;
         for(size_t i = 0; i < count; i++) {
-            if(tag_ptr = strstrTag(fmt, rep_pairs[i].key, index)) {
+            if((tag_ptr = strstrTag(fmt, rep_pairs[i].key, index))) {
                 // Calculate the length of the token found and add it to the output length
                 output_length += tag_ptr - fmt + strlen(rep_pairs[i].value);
                 // Update the index to continue the search
@@ -144,7 +216,7 @@ char *format_impl2(char *fmt, size_t count, ...) {
     while(fmt[index] != '\0') {
         int found = 0;
         for(size_t i = 0; i < count; i++) {
-            if(tag_ptr = strstrTag(fmt, rep_pairs[i].key, index)) {
+            if((tag_ptr = strstrTag(fmt, rep_pairs[i].key, index))) {
                 // Copy the part of the original string before the token
                 strncpy(output + output_index, fmt + index, tag_ptr - fmt - index);
                 output_index += tag_ptr - fmt - index;
@@ -165,84 +237,11 @@ char *format_impl2(char *fmt, size_t count, ...) {
             break;  // Exit the loop since no more replacements are possible
         }
     }
-    for(int i = 0; i < count; i++) {
+    for(size_t i = 0; i < count; i++) {
     	free(rep_pairs[i].key);
     	free(rep_pairs[i].value);
     }
     free(rep_pairs);
-    return output;
-}
-
-char *format_impl(char *fmt, size_t count, ...) {
-    replacement_pair *rep_pairs;
-    rep_pairs = malloc(count * sizeof(replacement_pair));
-    char *output;
-    size_t output_length = 0;
-
-    va_list args;
-    va_start(args, count);
-    for (size_t i = 0; i < count; i++) {
-        rep_pairs[i] = va_arg(args, replacement_pair);
-    }
-    va_end(args);
-
-    size_t index = 0;
-    while (fmt[index] != '\0') {
-        size_t token_len = strcspn(fmt + index, "{");
-        output_length += token_len;
-        index += token_len;
-
-        int found = 0;
-        for (size_t i = 0; i < count; i++) {
-            char *tag_ptr = strstrTag(fmt, rep_pairs[i].key, index);
-            if (tag_ptr) {
-                size_t key_len = strlen(rep_pairs[i].key);
-                output_length += strlen(rep_pairs[i].value);
-                index = tag_ptr - fmt + 2 + key_len;
-                found = 1;
-                break;
-            }
-        }
-
-        if (!found) {
-            break;
-        }
-    }
-
-    output = malloc(output_length + 1);
-
-    size_t output_index = 0;
-    index = 0;
-    while (fmt[index] != '\0') {
-        size_t token_len = strcspn(fmt + index, "{");
-        strncpy(output + output_index, fmt + index, token_len);
-        output_index += token_len;
-        index += token_len;
-
-        int found = 0;
-        for (size_t i = 0; i < count; i++) {
-            char *tag_ptr = strstrTag(fmt, rep_pairs[i].key, index);
-            if (tag_ptr) {
-                size_t key_len = strlen(rep_pairs[i].key);
-                strncpy(output + output_index, rep_pairs[i].value, strlen(rep_pairs[i].value));
-                output_index += strlen(rep_pairs[i].value);
-                index = tag_ptr - fmt + 2 + key_len;
-                found = 1;
-                break;
-            }
-        }
-
-        if (!found) {
-            break;
-        }
-    }
-
-    for (size_t i = 0; i < count; i++) {
-        free(rep_pairs[i].key);
-        free(rep_pairs[i].value);
-    }
-    free(rep_pairs);
-
     return output;
 }
 
@@ -251,11 +250,7 @@ int main() {
 	int a = 5;
 	int b = 10;
 	int c = 15;
-	char *my_formated_string = 
-		format("a is {a}, b is {b} and c is {c}\n", a, b, c);
-
-	puts(my_formated_string);
-
-	free(my_formated_string);	
+	printfi("a is {a}, b is {b} and c is {c}\n", a, b, c);
+	
     return 0;
 }
