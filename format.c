@@ -63,9 +63,6 @@ char *vformat(char *fmt, size_t count, va_list *args);
 
 typedef struct { char * key; char *value; } replacement_pair;
 
-#define printn(fmt, ...) printn_count(fmt, (const char *[]){__VA_ARGS__}, \
-	sizeof((const char *[]){__VA_ARGS__}) / sizeof(char *))
-
 int getIdentifierIndex(char *in) {
 	int position = -1;
 	for(int i = 0; in[i] != 0; i++) if(in[i] <= ' ' || in[i] == '=') {
@@ -110,7 +107,7 @@ char *getIdentifier(char *in) {
 	({ 														\
 		_Pragma("GCC diagnostic push"); 					\
 		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	\
-		char *temp;	typeof(in) _in; _in = in;				\
+		char *temp;  typeof(in) _in = in;		\
 		_generic_format(&temp, _in);						\
 		_Pragma("GCC diagnostic pop");						\
 		replacement_pair ret = (replacement_pair) { 		\
@@ -250,6 +247,7 @@ int main() {
 	int a = 5;
 	int b = 10;
 	int c = 15;
+	// printfi("Hello {var}", var = "World"); // not working yet
 	printfi("a is {a}, b is {b} and c is {c}\n", a, b, c);
 	
     return 0;
