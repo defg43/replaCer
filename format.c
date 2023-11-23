@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include "map.h"
+
 // todo: reorganize asprintf and make va_list by ref
 
 int asprintf (char **str, const char *fmt, ...) {
@@ -107,8 +108,10 @@ char *getIdentifier(char *in) {
 	({ 														\
 		_Pragma("GCC diagnostic push"); 					\
 		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	\
-		char *temp;  typeof(in) _in = in;		\
-		_generic_format(&temp, _in);						\
+		_Pragma("GCC diagnostic ignored \"-Wunused-variable\""); \
+		char *temp; 										\
+		typeof(in) _in = in; 									\
+		_generic_format(&temp, _in);     					\
 		_Pragma("GCC diagnostic pop");						\
 		replacement_pair ret = (replacement_pair) { 		\
 			.key = getIdentifier(#in),						\
@@ -118,12 +121,12 @@ char *getIdentifier(char *in) {
 
 char *strstrTag(char *haystack, char *needle, size_t offset) {
     int needle_len = strlen(needle);
-	haystack += offset;
+    haystack += offset;
     while (*haystack != '\0') {
         if (*haystack == '{') {
             char *end_brace = strchr(haystack, '}');
             if (end_brace != NULL) {
-                int inside_len = (int)(end_brace - haystack - 1);
+                int inside_len = (int)(end_brace - haystack + 1);
 
                 if (inside_len >= needle_len &&
                     strncmp(haystack + 1, needle, needle_len) == 0) {
@@ -170,7 +173,7 @@ int printfi(char *fmt, size_t count, ...) {
 		printfi(fmt, 														 \
 		lengthof((replacement_pair[]) 										 \
 		{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
-		MAP(createReplacementPair, __VA_ARGS__) 0)
+		MAP(createReplacementPair, __VA_ARGS__) 0) // avoiding trailing comma
 
 char *vformat(char *fmt, size_t count, va_list *args) {
     replacement_pair *rep_pairs;
@@ -247,7 +250,8 @@ int main() {
 	int a = 5;
 	int b = 10;
 	int c = 15;
-	// printfi("Hello {var}", var = "World"); // not working yet
+	char *var;
+	printfi("Hello {var}\n", var = "World");
 	printfi("a is {a}, b is {b} and c is {c}\n", a, b, c);
 	
     return 0;
