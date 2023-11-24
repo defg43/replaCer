@@ -119,7 +119,7 @@ char *getIdentifier(char *in) {
 		};													\
 		ret; }),
 
-char *strstrTag(char *haystack, char *needle, size_t offset) {
+char *strstrTag2(char *haystack, char *needle, size_t offset) {
     int needle_len = strlen(needle);
     haystack += offset;
     while (*haystack != '\0') {
@@ -141,6 +141,37 @@ char *strstrTag(char *haystack, char *needle, size_t offset) {
         }
     }
     return NULL;
+}
+
+char *strstrTag(char *haystack, char *needle, size_t offset) {
+	int needle_len = strlen(needle);
+    printf("the needle is: %s\n", needle);
+    printf("the needle length is %d\n", needle_len);
+    haystack += offset + offset == 0;
+	char *found_ptr;
+	while(*haystack) {
+		found_ptr = strstr(haystack, needle);
+		printf("the found ptr is: %p\n", found_ptr);
+		printf("the string is: %.6s\n", found_ptr);
+		if(found_ptr != NULL) {
+			if(offset != 0) {
+				printf("character at start: %c\n", found_ptr[0]);
+				printf("end char: %c -> %d\n", found_ptr[needle_len], found_ptr[needle_len]);
+				if(found_ptr[-1] == '{' && found_ptr[needle_len] == '}') {
+					printf("%s", found_ptr - 1);
+					return found_ptr - 1;
+				} else {
+					haystack = found_ptr + needle_len;
+					continue;
+				}
+			} else {
+				haystack++;
+			}
+		} else {
+			break;
+		}
+	}
+	return NULL;
 }
 	
 char *format(char *fmt, size_t count, ...) {
@@ -252,7 +283,7 @@ int main() {
 	int c = 15;
 	char *var;
 	printfi("Hello {var}\n", var = "World");
-	printfi("a is {a}, b is {b} and c is {c}\n", a, b, c);
+	printfi("a is {a}, b is {b} and c is {c}\n", a = a, b = b, c = c);
 	
     return 0;
 }
