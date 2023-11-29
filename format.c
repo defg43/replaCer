@@ -7,6 +7,31 @@
 #include "map.h"
 
 // todo: reorganize asprintf and make va_list by ref
+#define DEBUG 1
+
+#if DEBUG
+#define dbg(fmt, ...) \
+	printf("[debug: %s @ %d in %s] "fmt, __FUNCTION__, __LINE__, __FILE__, __VA_ARGS__)
+#else
+#define dbg(fmt, ...)
+#endif
+
+typedef struct {
+    char *start;
+    char *end;
+} substring_t;
+
+substring_t substring(char * start, const char * end) {
+    return (substring_t) {
+        start, end
+    };
+}
+
+#define substring(start, end) \
+    ({ \
+        static_assert((start) != NULL && (end)!= NULL, "start and end cannot both be NULL at the same time"); \
+        substring(start, end); \
+    })
 
 int asprintf (char **str, const char *fmt, ...) {
   int size = 0;
@@ -55,7 +80,6 @@ int vasprintf (char **str, const char *fmt, va_list args) {
   return size;
 } // end of asprintf
 
-
 #define lengthof(array) (sizeof(array)/sizeof((array)[0]))
 
 int printfi(char *fmt, size_t count, ...);
@@ -64,7 +88,7 @@ char *vformat(char *fmt, size_t count, va_list *args);
 
 typedef struct { char * key; char *value; } replacement_pair;
 
-int getIdentifierIndex(char *in) {
+int getIdentifierIndex(char *in, size_t index) { // maybe change interface
 	int position = -1;
 	for(int i = 0; in[i] != 0; i++) if(in[i] <= ' ' || in[i] == '=') {
 		position = i;
@@ -73,7 +97,7 @@ int getIdentifierIndex(char *in) {
 	return position;	
 }
 
-char *substring(char *in, size_t index) {
+char *stringAfter(char *in, size_t index) {
 	size_t length = strlen(in);
 	index = (length <= index) ? length: index;
 	char *substring;
@@ -82,7 +106,7 @@ char *substring(char *in, size_t index) {
 }
 
 char *getIdentifier(char *in) {
-	return substring(in, getIdentifierIndex(in));
+	return stringAfter(in, getIdentifierIndex(in));
 }
 
 #define _generic_format(ptr, x) \
@@ -145,24 +169,23 @@ char *strstrTag2(char *haystack, char *needle, size_t offset) {
 
 char *strstrTag(char *haystack, char *needle, size_t offset) {
 	int needle_len = strlen(needle);
-    printf("the needle is: %s\n", needle);
-    printf("the needle length is %d\n", needle_len);
+    dbg("the needle is: %s\n", needle);
+    dbg("the needle length is %d\n", needle_len);
     haystack += offset + offset == 0;
 	char *found_ptr;
 	while(*haystack) {
 		found_ptr = strstr(haystack, needle);
-		printf("the found ptr is: %p\n", found_ptr);
-		printf("the string is: %.6s\n", found_ptr);
+		dbg("the found ptr is: %p\n", found_ptr);
+		dbg("the string is: %.6s\n", found_ptr);
 		if(found_ptr != NULL) {
-			if(offset != 0) {
-				printf("character at start: %c\n", found_ptr[0]);
-				printf("end char: %c -> %d\n", found_ptr[needle_len], found_ptr[needle_len]);
+			if(true) {
+				dbg("character at start: %c\n", found_ptr[0]);
+				dbg("end char: %c -> %d\n", found_ptr[needle_len], found_ptr[needle_len]);
 				if(found_ptr[-1] == '{' && found_ptr[needle_len] == '}') {
-					printf("%s", found_ptr - 1);
+					dbg("%s", found_ptr - 1);
 					return found_ptr - 1;
 				} else {
 					haystack = found_ptr + needle_len;
-					continue;
 				}
 			} else {
 				haystack++;
@@ -206,7 +229,7 @@ int printfi(char *fmt, size_t count, ...) {
 		{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
 		MAP(createReplacementPair, __VA_ARGS__) 0) // avoiding trailing comma
 
-char *vformat(char *fmt, size_t count, va_list *args) {
+char *vformat2(char *fmt, size_t count, va_list *args) {
     replacement_pair *rep_pairs;
     char *output;
     size_t output_length = 0;
@@ -238,6 +261,7 @@ char *vformat(char *fmt, size_t count, va_list *args) {
             break;  // Exit the loop since no more replacements are possible
         }
     }
+    
     // Allocate memory for the final output string
     output = malloc(output_length + 1);  // +1 for the null terminator
 
@@ -245,28 +269,15 @@ char *vformat(char *fmt, size_t count, va_list *args) {
     size_t output_index = 0;
     index = 0;
     while(fmt[index] != '\0') {
-        int found = 0;
-        for(size_t i = 0; i < count; i++) {
-            if((tag_ptr = strstrTag(fmt, rep_pairs[i].key, index))) {
-                // Copy the part of the original string before the token
-                strncpy(output + output_index, fmt + index, tag_ptr - fmt - index);
-                output_index += tag_ptr - fmt - index;
-
-                // Copy the replacement value
-                strcpy(output + output_index, rep_pairs[i].value);
-                output_index += strlen(rep_pairs[i].value);
-
-                // Update the index to continue the search
-                index = tag_ptr - fmt + 2 + strlen(rep_pairs[i].key);
-                found = 1;
-                break;  // Exit the loop after finding the first match
-            }
-        }
-        if (!found) {
-            // If no replacement is found, copy the remaining part of the string
-            strcpy(output + output_index, fmt + index);
-            break;  // Exit the loop since no more replacements are possible
-        }
+		if(fmt[index] == '{') {
+			int run_ahead_index = 0;
+                while(fmt[++run_ahead_index]) {
+                    if (fmt[run_ahead_index] == '}') {
+                        break;
+                    }
+            } // run ahead and check if there is a closing '}'
+		}			
+        output[output_index] = fmt[index];
     }
     for(size_t i = 0; i < count; i++) {
     	free(rep_pairs[i].key);
@@ -276,14 +287,20 @@ char *vformat(char *fmt, size_t count, va_list *args) {
     return output;
 }
 
-
 int main() {
 	int a = 5;
 	int b = 10;
 	int c = 15;
 	char *var;
+    char *e = "{hm}  this";
+    char *f = "hm";
+    
+    printf("%s\n", strstrTag(e, f, 0));
+
+    printfi("Hello {var}\n", var = "World");
+    /*
 	printfi("Hello {var}\n", var = "World");
 	printfi("a is {a}, b is {b} and c is {c}\n", a = a, b = b, c = c);
-	
+	*/
     return 0;
 }
