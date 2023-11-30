@@ -268,14 +268,23 @@ char *vformat2(char *fmt, size_t count, va_list *args) {
     // Build the final string
     size_t output_index = 0;
     index = 0;
-    while(fmt[index] != '\0') {
-		if(fmt[index] == '{') {
-			int run_ahead_index = 0;
+    size_t braces_stack = 0;
+    char *brace_start_ptr;
+    char *brace_end_ptr;
+    substring_t potential_key;
+    while(fmt[index] != '\0') { // opening an closing braces should be counted
+        if(fmt[index] == '{') {
+            braces_stack ++;
+            brace_start_ptr = fmt + index;
+			int run_ahead_index = 0;               
                 while(fmt[++run_ahead_index]) {
-                    if (fmt[run_ahead_index] == '}') {
-                        break;
+                    braces_stack += fmt[run_ahead_index] == '{';
+                    braces_stack -= (fmt[run_ahead_index] == '}') && braces_stack;
+                    if(!braces_stack) {
+                        brace_end_ptr = fmt + run_ahead_index;
+                        potential_key = substring(brace_start_ptr + 1, brace_end_ptr - 1);
                     }
-            } // run ahead and check if there is a closing '}'
+            }
 		}			
         output[output_index] = fmt[index];
     }
