@@ -4,24 +4,327 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <assert.h>
+#include <unistd.h>
 #include "map.h"
 
 // todo: reorganize asprintf and make va_list by ref
 #define DEBUG 1
 
 #if DEBUG
+#define free(x) ({dbg("freeing variable %s with the value %p", #x, x); free(x);})
 #define dbg(fmt, ...) \
-	printf("[debug: %s @ %d in %s] "fmt, __FUNCTION__, __LINE__, __FILE__, __VA_ARGS__)
+    ({  \
+        printf("[debug: %s @ %d in %s from %s] " fmt "\n", \
+        __FUNCTION__, __LINE__, __FILE__, getCaller() __VA_OPT__(, __VA_ARGS__)); \
+        sleep(0); \
+    })
 #else
 #define dbg(fmt, ...)
 #endif
+
+#define __USE_GNU
+#include <dlfcn.h>
+
+const char *getCaller(void) {
+    void *callstack[3];
+    const int maxFrames = sizeof(callstack) / sizeof(callstack[0]);
+    Dl_info info;
+
+    int frames = backtrace(callstack, maxFrames);
+
+    if (dladdr(callstack[2], &info) && info.dli_sname != NULL) {
+        // printf("I was called from: %s\n", info.dli_sname);
+        return info.dli_sname;
+    } else {
+        // printf("Unable to determine calling function\n");
+        return "<unknown or symbol table not availible>";
+    }
+}
 
 typedef struct {
     char *start;
     char *end;
 } substring_t;
 
-substring_t substring(char * start, const char * end) {
+typedef struct {
+    size_t count;
+    substring_t *results;
+} substring_search_result_t; 
+
+typedef struct {
+    substring_t to_be_replaced;
+    char *to_insert;
+} substring_replacement_t;
+
+typedef struct {
+    char *string_to_edit;
+    size_t count;
+    substring_replacement_t *replacements;
+} replacement_mapping_t;
+
+typedef struct {
+    size_t entry_count;
+    char **key;
+    char **value;
+} dictionary_t;
+
+char * strdup(const char * s) {
+  size_t len = 1 + strlen(s);
+  char *p = malloc(len);
+
+  return p ? memcpy(p, s, len) : NULL;
+}
+
+dictionary_t createDictionary(size_t count, char *data[count][2]) {
+    dictionary_t dictionary_to_return;
+    dictionary_to_return.key = malloc(count * sizeof(char *));
+    dictionary_to_return.value = malloc(count * sizeof(char *));
+    dictionary_to_return.entry_count = count;
+    for (size_t i = 0; i < count; i++) {
+        dictionary_to_return.key[i] = strdup(data[i][0]);
+        dictionary_to_return.value[i] = strdup(data[i][1]);
+    }
+    return dictionary_to_return;
+}
+
+void destroyDictionary(dictionary_t to_destroy) {
+    for (size_t i = 0; i < to_destroy.entry_count; i++) {
+        free(to_destroy.key[i]);
+        free(to_destroy.value[i]);
+    }
+    free(to_destroy.key);
+    free(to_destroy.value);
+}
+
+#define dict(...) ({                                \
+    char *dictionary[][2] = __VA_ARGS__;            \
+    size_t size = lengthof(dictionary);             \
+    createDictionary(size, dictionary);             \
+})
+
+substring_t substring(char *start, char *end);
+
+void printSubstring(substring_t substr) {
+    if(substr.start == NULL) {
+        printf("<start pointer null>");
+    } else {
+        char *ptr = substr.start;
+        while(ptr != substr.end || *ptr == '\0') {
+            putchar(*ptr);
+            if(substr.end > substr.start) {
+                ptr++;
+            } else {
+                ptr--;
+            }
+        }
+        putchar(*ptr);
+    }
+}
+
+void printSubstringSearchResult(substring_search_result_t substr_srh_res) {
+    putchar('{');
+    for(size_t index = 0; index < substr_srh_res.count - 1; index++) {
+        printSubstring(substr_srh_res.results[index]);
+        putchar(',');
+        putchar(' ');
+    }
+    printSubstring(substr_srh_res.results[substr_srh_res.count - 1]);
+    putchar('}');
+}
+
+substring_search_result_t createSubstringSearchResult(size_t count) {
+    return (substring_search_result_t) { 
+        .count = count, 
+        .results = malloc(count * sizeof(substring_t)),
+    };
+}
+
+void destroySubstringSearchResult(substring_search_result_t result_to_destroy) {
+    result_to_destroy.count = 0;
+    free(result_to_destroy.results);
+}
+
+char *surroundWithBraces(char *text) {
+    if(!text) {
+        return NULL;
+    }
+    size_t len = strlen(text);
+    text = realloc(text, len + 2 + 1);
+    if(!text) {
+        return NULL;
+    }
+    size_t index = 0;
+    char temp = '{';
+    while(temp) {
+        text[index++] ^= temp ^= text[index] ^= temp;
+    }
+    text[index++] = '}';
+    text[index] = '\0';
+    return text;
+}
+
+dictionary_t *addTagsToDictionary(dictionary_t *dictionary) {
+    for(size_t index = 0; index < dictionary->entry_count; index++) {
+        dictionary->value[index] = realloc(dictionary->value[index], strlen(dictionary->value[index]) + 2);
+    }
+    return dictionary;
+}
+
+char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
+    // Calculate the length of the modified string
+    size_t inputLength = strlen(inputString);
+    size_t outputLength = inputLength;
+
+    for (int i = 0; i < dictionary.entry_count; i++) {
+        char *substring = dictionary.key[i];
+        char *replacement = dictionary.value[i];
+
+        // Count occurrences of substring
+        char *pos = inputString;
+        while ((pos = strstr(pos, substring)) != NULL) {
+            outputLength += strlen(replacement) - strlen(substring);
+            pos += strlen(substring);
+        }
+    }
+
+    // Allocate memory for the modified string
+    char *outputString = (char *)malloc(outputLength + 1);
+    if (outputString == NULL) {
+        fprintf(stderr, "Memory allocation error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Copy and replace substrings
+    size_t currentIndex = 0;
+    for (size_t i = 0; i < inputLength; i++) {
+        int match_found = 0;
+        for (int j = 0; j < dictionary.entry_count; j++) {
+            char *substring = dictionary.key[j];
+            char *replacement = dictionary.value[j];
+
+            if (strncmp(inputString + i, substring, strlen(substring)) == 0) {
+                strcpy(outputString + currentIndex, replacement);
+                currentIndex += strlen(replacement);
+                i += strlen(substring) - 1;  // Move the index past the matched substring
+                match_found = 1;
+                break;
+            }
+        }
+
+        if (!match_found) {
+            outputString[currentIndex++] = inputString[i];
+        }
+    }
+
+    outputString[currentIndex] = '\0'; // Null-terminate the output string
+
+    return outputString;
+}
+
+substring_search_result_t searchSubstring(char *string_a, char *string_b) {
+    // determine which is the substring and which is the search string
+    struct { size_t a; size_t b; } length_ab = { 
+        .a = strlen(string_a),
+        .b = strlen(string_b),
+    };
+
+    char *needle;
+    char *haystack;
+    struct { size_t needle; size_t haystack; } length = {
+        .needle = (length_ab.a > length_ab.b) ? length_ab.b : length_ab.a,
+        .haystack = (length_ab.a > length_ab.b) ? length_ab.a : length_ab.b,
+    };
+
+    needle = (length_ab.a > length_ab.b) ? string_b : string_a;
+    haystack = (length_ab.a > length_ab.b) ? string_a : string_b;
+
+    substring_search_result_t result;
+    char *found_ptr; // pointer to the needle found by strstr
+    size_t ratio; // upper limit of how many needles fit in the haystack
+    size_t actual_count = 0;
+
+    ratio = (size_t)(length.haystack / length.needle);
+    result = createSubstringSearchResult(ratio);
+    found_ptr = haystack; 
+
+    for(size_t iteration = 0; iteration < ratio; iteration++) {
+        dbg("found_ptr: %p, haystack: %p", found_ptr, haystack);
+
+        assert(found_ptr != NULL);
+        assert(haystack != NULL);
+        
+        found_ptr = strstr(found_ptr, needle);
+        if(found_ptr != NULL) {  // Check if found_ptr is not NULL before proceeding
+            result.results[actual_count].start = found_ptr;
+            result.results[actual_count].end = found_ptr + length.needle - 1;
+            dbg("start: %p end: %p", result.results[actual_count].start, result.results[actual_count].end);
+            actual_count++;
+            found_ptr += length.needle;
+        } else {
+            break;
+        }
+    }
+    // downsize the result if needed
+    if(actual_count != 0) {
+        result.count = actual_count;
+        result.results = realloc(result.results, actual_count * sizeof(substring_t));
+        dbg("reallocating as only %d substrings were found", actual_count);
+    } else {
+        result.count = 0;
+        free(result.results);
+        result.results = NULL;
+        dbg("no result was found");
+    }
+    return result;
+}
+
+substring_search_result_t OLDsearchSubstring(char *string_a, char *string_b) {
+    // determine which is the substring and which is the search string
+    struct { size_t a; size_t b; } length_ab = { 
+        .a = strlen(string_a),
+        .b = strlen(string_b),
+    };
+
+    char *needle;
+    char *haystack;
+    struct { size_t needle; size_t haystack; } length = {
+        .needle = (length_ab.a > length_ab.b) ? length_ab.b : length_ab.a,
+        .haystack = (length_ab.a > length_ab.b) ? length_ab.a : length_ab.b,
+    };
+
+    needle = (length_ab.a > length_ab.b) ? string_b : string_a;
+    haystack = (length_ab.a > length_ab.b) ? string_a : string_b;
+
+    substring_search_result_t result;
+    char *found_ptr; // pointer to the needle found by strstr
+    size_t ratio; // upper limit of how many needles fit in the haystack
+    size_t actual_count = 0;
+
+    ratio = (size_t)(length.haystack / length.needle);
+    result = createSubstringSearchResult(ratio);
+    found_ptr = needle; 
+    for(size_t iteration = 0; iteration < ratio; iteration++) {
+        dbg("found_ptr: %p, haystack: %p", found_ptr, haystack);
+
+        assert(found_ptr != NULL);
+        assert(haystack != NULL);
+        
+        if(found_ptr = strstr(found_ptr, haystack)) {
+            actual_count++;
+            result.results[actual_count] = substring(found_ptr, found_ptr + length.needle); 
+            found_ptr += length.needle;
+        } else {
+            break;
+        }
+    }
+    // downsize the result if needed
+    result.count = actual_count;
+    result.results = realloc(result.results, actual_count * sizeof(substring_t));
+    return result;
+}
+
+substring_t substring(char *start, char *end) {
     return (substring_t) {
         start, end
     };
@@ -29,7 +332,7 @@ substring_t substring(char * start, const char * end) {
 
 #define substring(start, end) \
     ({ \
-        static_assert((start) != NULL && (end)!= NULL, "start and end cannot both be NULL at the same time"); \
+        assert((start) != NULL && (end) != NULL); \
         substring(start, end); \
     })
 
@@ -80,7 +383,7 @@ int vasprintf (char **str, const char *fmt, va_list args) {
   return size;
 } // end of asprintf
 
-#define lengthof(array) (sizeof(array)/sizeof((array)[0]))
+#define lengthof(array) (sizeof(array) / sizeof((array)[0]))
 
 int printfi(char *fmt, size_t count, ...);
 char *format(char *fmt, size_t count, ...);
@@ -106,7 +409,7 @@ char *stringAfter(char *in, size_t index) {
 }
 
 char *getIdentifier(char *in) {
-	return stringAfter(in, getIdentifierIndex(in));
+	return stringAfter(in, getIdentifierIndex(in, 0));
 }
 
 #define _generic_format(ptr, x) \
@@ -196,7 +499,7 @@ char *strstrTag(char *haystack, char *needle, size_t offset) {
 	}
 	return NULL;
 }
-	
+
 char *format(char *fmt, size_t count, ...) {
     char *output;
     va_list args;
@@ -229,7 +532,167 @@ int printfi(char *fmt, size_t count, ...) {
 		{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
 		MAP(createReplacementPair, __VA_ARGS__) 0) // avoiding trailing comma
 
-char *vformat2(char *fmt, size_t count, va_list *args) {
+bool isThisATag(char *main_string, substring_t potential_tag) {
+    dbg("the main string is %s, the substring is [%p - %p]", main_string, potential_tag.start, potential_tag.end);
+    if(main_string == potential_tag.start) { // avoid segfault
+        dbg("returning true for ");
+        printSubstring(potential_tag);
+        return false;
+    }
+
+    dbg("the char is %c", potential_tag.end[1]);
+    if(potential_tag.start[-1] == '{' && potential_tag.end[1] == '}') {
+        dbg("returning true for ");
+        printSubstring(potential_tag);
+        return true;
+    }
+    dbg("returning false for ");
+    printSubstring(potential_tag);
+    return false;
+}
+
+int compare_substring_start(void *a, void *b) {
+    substring_t *_a = a;
+    substring_t *_b = b;
+    if(_a == NULL && _b != NULL) {
+        return -1;
+    }
+    if(_b == NULL && _a != NULL) {
+        return 1;
+    }
+    if(_a == NULL && _b == NULL) {
+        return 0;
+    }
+    if(_a->start > _b->start) {
+        return 1;
+    }
+    if(_a->start == _b->start) {
+        return 0;
+    }
+    if(_a->start < _b->start) {
+        return -1;
+    }
+}
+
+char *vformat(char *fmt, size_t count, va_list *args) {
+    replacement_pair *rep_pairs;
+    char *output;
+    size_t output_length = strlen(fmt);
+  	va_list args_copy;
+    va_copy(args_copy, *args);
+    rep_pairs = malloc(count * sizeof(replacement_pair));
+    for(size_t i = 0; i < count; i++) {
+        rep_pairs[i] = va_arg(args_copy, replacement_pair);
+    }
+    va_end(args_copy);
+
+    // create a dictionary and fill it in
+
+    for(size_t i = 0; i < count; i++) {
+    	free(rep_pairs[i].key);
+    	free(rep_pairs[i].value);
+    }
+    free(rep_pairs);
+    return output;
+}
+
+char *vformatOLD2(char *fmt, size_t count, va_list *args) {
+    size_t replacement_list_max_count = 0;
+    struct {
+        size_t count;
+        struct {
+            substring_t tag_in_text;
+            char *insert_string;
+        } *replacer;
+    } replacement_list = {
+        .count = 0,
+    };
+
+    replacement_pair *rep_pairs;
+    char *output;
+    size_t output_length = strlen(fmt);
+  	va_list args_copy;
+    va_copy(args_copy, *args);
+    rep_pairs = malloc(count * sizeof(replacement_pair));
+    for(size_t i = 0; i < count; i++) {
+        rep_pairs[i] = va_arg(args_copy, replacement_pair);
+    }
+    va_end(args_copy);
+
+    // result array
+    substring_search_result_t *search_result = malloc(count * sizeof(substring_search_result_t));
+
+    for(size_t j = 0; j < count; j++) {
+        search_result[j] = searchSubstring(fmt, rep_pairs[j].key);
+        for(size_t index = 0; index < search_result[j].count; index++) {
+            bool is_tag = isThisATag(fmt, search_result[j].results[index]);
+            output_length += (is_tag) *
+            (strlen(rep_pairs[j].value - strlen(rep_pairs[j].key) - 2));
+            
+            if(!is_tag) { // delete those substrings that arent tags
+                search_result[j].results[index].start = NULL;
+                search_result[j].results[index].end = NULL;
+            } else { // expand to include {}
+                search_result[j].results[index].start--;
+                search_result[j].results[index].end++;
+                replacement_list_max_count++;
+            }
+        } 
+        dbg("number of occurences: %d \n", search_result[j].count); 
+    }
+
+    replacement_list.replacer = malloc(replacement_list_max_count * sizeof(replacement_list.replacer));
+    
+    
+    for(size_t result_index = 0; result_index < count; result_index++) {
+        for(size_t index = 0; index < search_result[result_index].count; index++) {
+
+            if(search_result[result_index].results[index].start != NULL) {
+                replacement_list.replacer[replacement_list.count].tag_in_text = search_result[result_index].results[index];
+                replacement_list.replacer[replacement_list.count].insert_string = rep_pairs[result_index].value;
+                replacement_list.count++;
+                dbg("\n\ncurrently proccesing");
+                printSubstring(search_result[result_index].results[index]);
+                dbg("\nthe count is being set to %d", replacement_list.count);
+                printf("\n----------\n");
+            } 
+                dbg("this is after the if, token:");
+                printSubstring(search_result[result_index].results[index]);
+                printf("\n");
+        }
+    }
+
+    qsort(replacement_list.replacer, replacement_list.count, sizeof(replacement_list.replacer[0]), compare_substring_start);
+    dbg("qsort should have sorted its input");
+
+    dbg("the count is %d", replacement_list.count);
+    for(size_t index = 0; index < replacement_list.count; index++) {
+        printSubstring(replacement_list.replacer[index].tag_in_text);
+    }
+
+    #if DEBUG
+    dbg("the found key table:");
+    for(size_t index = 0; index < count; index++) {
+        printSubstringSearchResult(search_result[index]);
+        printf(", ");
+    }
+    printf("\b \b\n");
+    #endif // DEBUG
+    output = malloc((output_length >= strlen(fmt)) ? output_length : strlen(fmt));
+    dbg("the output length is %d, the output is %p", output_length, output);
+    strncpy(output, fmt, strlen(fmt));
+    // after that we replace what needs to be replaced
+
+    free(search_result);
+    for(size_t i = 0; i < count; i++) {
+    	free(rep_pairs[i].key);
+    	free(rep_pairs[i].value);
+    }
+    free(rep_pairs);
+    return output;
+}
+
+char *vformatOld(char *fmt, size_t count, va_list *args) {
     replacement_pair *rep_pairs;
     char *output;
     size_t output_length = 0;
@@ -250,7 +713,7 @@ char *vformat2(char *fmt, size_t count, va_list *args) {
                 // Calculate the length of the token found and add it to the output length
                 output_length += tag_ptr - fmt + strlen(rep_pairs[i].value);
                 // Update the index to continue the search
-                index = tag_ptr - fmt + 2 + strlen(rep_pairs[i].key);
+                index = tag_ptr - fmt + 3 + strlen(rep_pairs[i].key);
                 found = 1;
                 break;  // Exit the loop after finding the first match
             }
@@ -297,19 +760,31 @@ char *vformat2(char *fmt, size_t count, va_list *args) {
 }
 
 int main() {
+    char *test = strdup("this is a test string");
+    test = surroundWithBraces(test);
+    printf("%s", test);
+    free(test);
+    return 0;
 	int a = 5;
 	int b = 10;
 	int c = 15;
-	char *var;
-    char *e = "{hm}  this";
-    char *f = "hm";
+	char *var = "world";
+    char *e = "this";
+    char *f = "is based";
     
-    printf("%s\n", strstrTag(e, f, 0));
+    // printf("%s\n", strstrTag(e, f, 0));
 
-    printfi("Hello {var}\n", var = "World");
-    /*
-	printfi("Hello {var}\n", var = "World");
-	printfi("a is {a}, b is {b} and c is {c}\n", a = a, b = b, c = c);
-	*/
+    // printfi("Hello {var}\n", var = "World", a);
+    // printfi("hello {var}, {e} {f}\n", var, e, f);
+	// printfi("a is {a}, b is {b} and c is {c}\n", a = a, b = b, c = c);
+    auto my_string = replaceSubstrings("Hello {var}, is a {var2}", 
+    dict({
+            {"{var}", "world"},
+            {"{var2}", "test"}
+        })
+    );
+    
+    printf("%s", my_string);
     return 0;
 }
+ 
