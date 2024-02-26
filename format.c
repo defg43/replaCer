@@ -7,9 +7,9 @@
 #include <assert.h>
 #include <unistd.h>
 #include "map.h"
+#include <malloc.h>
 
-// todo: reorganize asprintf and make va_list by ref
-#define DEBUG 1
+#define lengthof(array) (sizeof(array) / sizeof((array)[0]))
 
 #if DEBUG
 #define free(x) ({dbg("freeing variable %s with the value %p", #x, x); free(x);})
@@ -23,6 +23,7 @@
 #define dbg(fmt, ...)
 #endif
 
+
 #define __USE_GNU
 #include <dlfcn.h>
 #include <execinfo.h>
@@ -32,14 +33,14 @@ const char *getCaller(void) {
     const int maxFrames = sizeof(callstack) / sizeof(callstack[0]);
     Dl_info info;
 
-    int frames = backtrace(callstack, maxFrames);
+    backtrace(callstack, maxFrames);
 
     if (dladdr(callstack[2], &info) && info.dli_sname != NULL) {
         // printf("I was called from: %s\n", info.dli_sname);
         return info.dli_sname;
     } else {
         // printf("Unable to determine calling function\n");
-        return "<unknown or symbol table not availible>";
+        return "<?>";
     }
 }
 
@@ -49,33 +50,31 @@ typedef struct {
 } substring_t;
 
 typedef struct {
-    size_t count;
-    substring_t *results;
-} substring_search_result_t; 
-
-typedef struct {
-    substring_t to_be_replaced;
-    char *to_insert;
-} substring_replacement_t;
-
-typedef struct {
-    char *string_to_edit;
-    size_t count;
-    substring_replacement_t *replacements;
-} replacement_mapping_t;
-
-typedef struct {
     size_t entry_count;
     char **key;
     char **value;
 } dictionary_t;
 
-char * strdup(const char * s) {
-  size_t len = 1 + strlen(s);
-  char *p = malloc(len);
+// string functions prototypes
+int printh(char *fmt, dictionary_t dictionary); // better name ?
+char *format(char *fmt, dictionary_t dictionary);
+char *surroundWithBraces(char *text);
+char *replaceSubstrings(char *inputString, dictionary_t dictionary);
+char *strdup(const char *s);
+substring_t substring(char *start, char *end);
+char *stringAfter(char *in, size_t index);
+void printSubstring(substring_t substr);
+int getIdentifierIndex(char *in, size_t index);
+char *getIdentifier(char *in);
 
-  return p ? memcpy(p, s, len) : NULL;
-}
+int vasprintf(char **str, const char *fmt, va_list args);
+int asprintf (char **str, const char *fmt, ...);
+
+// dictionary functions 
+dictionary_t createDictionary(size_t count, char *data[count][2]);
+void destroyDictionary(dictionary_t to_destroy);
+dictionary_t convertKeysToTags(dictionary_t dictionary);
+void printDictionary(dictionary_t dictionary);
 
 dictionary_t createDictionary(size_t count, char *data[count][2]) {
     dictionary_t dictionary_to_return;
@@ -83,8 +82,8 @@ dictionary_t createDictionary(size_t count, char *data[count][2]) {
     dictionary_to_return.value = malloc(count * sizeof(char *));
     dictionary_to_return.entry_count = count;
     for (size_t i = 0; i < count; i++) {
-        dictionary_to_return.key[i] = strdup(data[i][0]);
-        dictionary_to_return.value[i] = strdup(data[i][1]);
+        dictionary_to_return.key[i] = data[i][0];
+        dictionary_to_return.value[i] = data[i][1];
     }
     return dictionary_to_return;
 }
@@ -98,13 +97,12 @@ void destroyDictionary(dictionary_t to_destroy) {
     free(to_destroy.value);
 }
 
-#define dict(...) ({                                \
-    char *dictionary[][2] = __VA_ARGS__;            \
-    size_t size = lengthof(dictionary);             \
-    createDictionary(size, dictionary);             \
-})
-
-substring_t substring(char *start, char *end);
+void printDictionary(dictionary_t dictionary) {    
+    for (size_t i = 0; i < dictionary.entry_count; ++i) {
+        printf("%s: ", dictionary.key[i]);
+        printf("%s\n", dictionary.value[i]);
+    }
+}
 
 void printSubstring(substring_t substr) {
     if(substr.start == NULL) {
@@ -123,56 +121,48 @@ void printSubstring(substring_t substr) {
     }
 }
 
-void printSubstringSearchResult(substring_search_result_t substr_srh_res) {
-    putchar('{');
-    for(size_t index = 0; index < substr_srh_res.count - 1; index++) {
-        printSubstring(substr_srh_res.results[index]);
-        putchar(',');
-        putchar(' ');
-    }
-    printSubstring(substr_srh_res.results[substr_srh_res.count - 1]);
-    putchar('}');
+#define dict(...) ({                                \
+    char *dictionary[][2] = __VA_ARGS__;            \
+    size_t size = lengthof(dictionary);             \
+    createDictionary(size, dictionary);             \
+})
+
+#define dictDeepCopy(...) ({                        \
+    char *dictionary[][2] = __VA_ARGS__;            \
+    size_t size = lengthof(dictionary);             \
+    char *copied_dictionary[size][2];               \
+    for(size_t i = 0; i < size; i++) {              \
+        copied_dictionary[i][0] = dictionary[i][0]; \
+        copied_dictionary[i][1] = dictionary[i][1]; \
+    }                                               \
+    createDictionary(size, copied_dictionary);      \
+})
+
+
+char * strdup(const char * s) {
+  size_t len = 1 + strlen(s);
+  char *p = malloc(len);
+
+  return p ? memcpy(p, s, len) : NULL;
 }
 
-substring_search_result_t createSubstringSearchResult(size_t count) {
-    return (substring_search_result_t) { 
-        .count = count, 
-        .results = malloc(count * sizeof(substring_t)),
-    };
-}
-
-void destroySubstringSearchResult(substring_search_result_t result_to_destroy) {
-    result_to_destroy.count = 0;
-    free(result_to_destroy.results);
-}
-
-char *surroundWithBraces(char text[static 1]) {
-  if (!text) return strdup("{}");
-  int len = strlen(text);
+char *surroundWithBraces(char *text) {
+  if (!text) {
+    return strdup("{}");
+  }
+  size_t len = strlen(text);
   if (malloc_usable_size(text) < len + 3) {
     memmove(text + 1, text, len);
   } else {
-    char* nbuf = malloc(len + 3);
+    char *nbuf = malloc(len + 3);
     memcpy(nbuf + 1, text, len);
     free(text);
     text = nbuf;
   }
   text[0] = '{';
-  text[len] = '}';
-  text[len + 1] = 0;
+  text[len + 1] = '}';
+  text[len + 2] = '\0';
   return text;
-}
-
-char *surroundWithBraces_old(char text[static 1]) {
-    if(!text || !(text = realloc(text, strlen(text) + 2 + 1))) {
-        return NULL;
-    }
-    size_t index = 0;
-    char temp = '{';
-    while(temp ^= text[index++] ^= temp ^= text[index]);
-    text[index++] = '}';
-    text[index] = '\0';
-    return text;
 }
 
 dictionary_t convertKeysToTags(dictionary_t dictionary) {
@@ -187,7 +177,7 @@ char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
     size_t inputLength = strlen(inputString);
     size_t outputLength = inputLength;
 
-    for (int i = 0; i < dictionary.entry_count; i++) {
+    for (size_t i = 0; i < dictionary.entry_count; i++) {
         char *substring = dictionary.key[i];
         char *replacement = dictionary.value[i];
 
@@ -210,7 +200,7 @@ char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
     size_t currentIndex = 0;
     for (size_t i = 0; i < inputLength; i++) {
         int match_found = 0;
-        for (int j = 0; j < dictionary.entry_count; j++) {
+        for (size_t j = 0; j < dictionary.entry_count; j++) {
             char *substring = dictionary.key[j];
             char *replacement = dictionary.value[j];
 
@@ -233,108 +223,6 @@ char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
     return outputString;
 }
 
-substring_search_result_t searchSubstring(char *string_a, char *string_b) {
-    // determine which is the substring and which is the search string
-    struct { size_t a; size_t b; } length_ab = { 
-        .a = strlen(string_a),
-        .b = strlen(string_b),
-    };
-
-    char *needle;
-    char *haystack;
-    struct { size_t needle; size_t haystack; } length = {
-        .needle = (length_ab.a > length_ab.b) ? length_ab.b : length_ab.a,
-        .haystack = (length_ab.a > length_ab.b) ? length_ab.a : length_ab.b,
-    };
-
-    needle = (length_ab.a > length_ab.b) ? string_b : string_a;
-    haystack = (length_ab.a > length_ab.b) ? string_a : string_b;
-
-    substring_search_result_t result;
-    char *found_ptr; // pointer to the needle found by strstr
-    size_t ratio; // upper limit of how many needles fit in the haystack
-    size_t actual_count = 0;
-
-    ratio = (size_t)(length.haystack / length.needle);
-    result = createSubstringSearchResult(ratio);
-    found_ptr = haystack; 
-
-    for(size_t iteration = 0; iteration < ratio; iteration++) {
-        dbg("found_ptr: %p, haystack: %p", found_ptr, haystack);
-
-        assert(found_ptr != NULL);
-        assert(haystack != NULL);
-        
-        found_ptr = strstr(found_ptr, needle);
-        if(found_ptr != NULL) {  // Check if found_ptr is not NULL before proceeding
-            result.results[actual_count].start = found_ptr;
-            result.results[actual_count].end = found_ptr + length.needle - 1;
-            dbg("start: %p end: %p", result.results[actual_count].start, result.results[actual_count].end);
-            actual_count++;
-            found_ptr += length.needle;
-        } else {
-            break;
-        }
-    }
-    // downsize the result if needed
-    if(actual_count != 0) {
-        result.count = actual_count;
-        result.results = realloc(result.results, actual_count * sizeof(substring_t));
-        dbg("reallocating as only %d substrings were found", actual_count);
-    } else {
-        result.count = 0;
-        free(result.results);
-        result.results = NULL;
-        dbg("no result was found");
-    }
-    return result;
-}
-
-substring_search_result_t OLDsearchSubstring(char *string_a, char *string_b) {
-    // determine which is the substring and which is the search string
-    struct { size_t a; size_t b; } length_ab = { 
-        .a = strlen(string_a),
-        .b = strlen(string_b),
-    };
-
-    char *needle;
-    char *haystack;
-    struct { size_t needle; size_t haystack; } length = {
-        .needle = (length_ab.a > length_ab.b) ? length_ab.b : length_ab.a,
-        .haystack = (length_ab.a > length_ab.b) ? length_ab.a : length_ab.b,
-    };
-
-    needle = (length_ab.a > length_ab.b) ? string_b : string_a;
-    haystack = (length_ab.a > length_ab.b) ? string_a : string_b;
-
-    substring_search_result_t result;
-    char *found_ptr; // pointer to the needle found by strstr
-    size_t ratio; // upper limit of how many needles fit in the haystack
-    size_t actual_count = 0;
-
-    ratio = (size_t)(length.haystack / length.needle);
-    result = createSubstringSearchResult(ratio);
-    found_ptr = needle; 
-    for(size_t iteration = 0; iteration < ratio; iteration++) {
-        dbg("found_ptr: %p, haystack: %p", found_ptr, haystack);
-
-        assert(found_ptr != NULL);
-        assert(haystack != NULL);
-        
-        if(found_ptr = strstr(found_ptr, haystack)) {
-            actual_count++;
-            result.results[actual_count] = substring(found_ptr, found_ptr + length.needle); 
-            found_ptr += length.needle;
-        } else {
-            break;
-        }
-    }
-    // downsize the result if needed
-    result.count = actual_count;
-    result.results = realloc(result.results, actual_count * sizeof(substring_t));
-    return result;
-}
-
 substring_t substring(char *start, char *end) {
     return (substring_t) {
         start, end
@@ -346,8 +234,6 @@ substring_t substring(char *start, char *end) {
         assert((start) != NULL && (end) != NULL); \
         substring(start, end); \
     })
-
-int vasprintf(char **str, const char *fmt, va_list args);
 
 int asprintf (char **str, const char *fmt, ...) {
   int size = 0;
@@ -396,19 +282,16 @@ int vasprintf (char **str, const char *fmt, va_list args) {
   return size;
 } // end of asprintf
 
-#define lengthof(array) (sizeof(array) / sizeof((array)[0]))
-
-int printfi(char *fmt, dictionary_t dictionary);
-char *format(char *fmt, dictionary_t dictionary);
-
-typedef struct { char * key; char *value; } replacement_pair;
-
-int getIdentifierIndex(char *in, size_t index) { // maybe change interface
-	int position = -1;
-	for(int i = 0; in[i] != 0; i++) if(in[i] <= ' ' || in[i] == '=') {
-		position = i;
-		break;
-	}
+int getIdentifierIndex(char *in, size_t index) {
+	if(strlen(in) < index) {
+        return -1;
+    }
+    int position = -1;
+	for(size_t i = index; in[i] != 0; i++) 
+        if(in[i] <= ' ' || in[i] == '=') {
+	    	position = i;
+		    break;
+    	}
 	return position;	
 }
 
@@ -423,230 +306,108 @@ char *stringAfter(char *in, size_t index) {
 char *getIdentifier(char *in) {
 	return stringAfter(in, getIdentifierIndex(in, 0));
 }
-
-#define _generic_format(ptr, x) \
-		_Generic((x), \
-		char: asprintf(ptr, "%c", x), \
-	    unsigned char: asprintf(ptr, "%u", x), \
-	    short: asprintf(ptr, "%hd", x), \
-	    unsigned short: asprintf(ptr, "%hu", x), \
-	    int: asprintf(ptr, "%d", x), \
-	    unsigned int: asprintf(ptr, "%u", x), \
-	    long: asprintf(ptr, "%ld", x), \
-	    unsigned long: asprintf(ptr, "%lu", x), \
-	    long long: asprintf(ptr, "%lld", x), \
-	    unsigned long long: asprintf(ptr, "%llu", x), \
-	    float: asprintf(ptr, "%f", x), \
-	    double: asprintf(ptr, "%lf", x), \
-	    long double: asprintf(ptr, "%Lf", x), \
-	    char *: asprintf(ptr, "%s", x), \
-	    default: (NULL) \
-	)	
-
-#define createReplacementPair(in) 							    \
-	({ 														    \
-		_Pragma("GCC diagnostic push"); 					    \
-		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	    \
-		_Pragma("GCC diagnostic ignored \"-Wunused-variable\"");\
-		char *temp; 										    \
-		typeof(in) _in = in; 									\
-		_generic_format(&temp, _in);     					    \
-		_Pragma("GCC diagnostic pop");						    \
-		replacement_pair ret = (replacement_pair) { 		    \
-			.key = getIdentifier(#in),						    \
-			.value = temp									    \
-		};													    \
-		ret; }),
-
-char *strstrTag2(char *haystack, char *needle, size_t offset) {
-    int needle_len = strlen(needle);
-    haystack += offset;
-    while (*haystack != '\0') {
-        if (*haystack == '{') {
-            char *end_brace = strchr(haystack, '}');
-            if (end_brace != NULL) {
-                int inside_len = (int)(end_brace - haystack + 1);
-
-                if (inside_len >= needle_len &&
-                    strncmp(haystack + 1, needle, needle_len) == 0) {
-                    return haystack;
-                }
-                haystack = end_brace + 1;
-            } else {
-                break;
-            }
-        } else {
-            ++haystack;
-        }
-    }
-    return NULL;
-}
-
-char *strstrTag(char *haystack, char *needle, size_t offset) {
-	int needle_len = strlen(needle);
-    dbg("the needle is: %s\n", needle);
-    dbg("the needle length is %d\n", needle_len);
-    haystack += offset + offset == 0;
-	char *found_ptr;
-	while(*haystack) {
-		found_ptr = strstr(haystack, needle);
-		dbg("the found ptr is: %p\n", found_ptr);
-		dbg("the string is: %.6s\n", found_ptr);
-		if(found_ptr != NULL) {
-			if(true) {
-				dbg("character at start: %c\n", found_ptr[0]);
-				dbg("end char: %c -> %d\n", found_ptr[needle_len], found_ptr[needle_len]);
-				if(found_ptr[-1] == '{' && found_ptr[needle_len] == '}') {
-					dbg("%s", found_ptr - 1);
-					return found_ptr - 1;
-				} else {
-					haystack = found_ptr + needle_len;
-				}
-			} else {
-				haystack++;
-			}
-		} else {
-			break;
-		}
-	}
-	return NULL;
-}
-
+                                                                                          
 char *format(char *fmt, dictionary_t dictionary) {
     char *output;
    	output = replaceSubstrings(fmt, dictionary);
     return output;
 }
 
-#define _createKey()                                            \
-    _Pragma("GCC diagnostic push"); 					        \
-	_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	        \
-	_Pragma("GCC diagnostic ignored \"-Wunused-variable\"");    \
-    
-        
-#define _createValue()
-
-#define _createKeyValuePairs(in) \
-    { _createKey(in), _createValue(in) }
-                                                                    \
-    ({                                                              \
-        _Pragma("GCC diagnostic push"); 					        \
-		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	        \
-		_Pragma("GCC diagnostic ignored \"-Wunused-variable\"");    \
-        char *temp;      										    \
-		typeof(in) _in = in;     									\
-		_generic_format(&temp, _in);         					    \
-		_Pragma("GCC diagnostic pop");			    			    \
-		replacement_pair ret = (replacement_pair) {     		    \
-			.key = getIdentifier(#in),					    	    \
-			.value = temp								    	    \
-		};													        \
-		ret;                                                        \
-    })                                                      
-
-#define format_old(fmt, ...) 												\
-	format(fmt, 														    \
-	lengthof((replacement_pair[]) 										    \
-	{MAP(createReplacementPair, __VA_ARGS__)}),        						\
-	MAP(createReplacementPair, __VA_ARGS__) 0)                              \
-
-#define format()                                                            \
-    format(fmt,                                                             \
-        dict(                                                               \
-            MAP()
-        )
-    )
-
-
-int printfi(char *fmt, dictionary_t dictionary) {
+int printh(char *fmt, __attribute_maybe_unused__ dictionary_t dictionary) {
 	char *output = format(fmt, dictionary);
-	int output_length = strlen(output);
+    dbg("the is %s", output);
+    int output_length = strlen(output);
 	fputs(output, stdout);
 	free(output);
 	return output_length;
 }
 
-#define printfi(fmt, ...)   												 \
-		printfi(fmt, 														 \
-		lengthof((replacement_pair[]) 										 \
-		{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
-		MAP(createReplacementPair, __VA_ARGS__) 0) // avoiding trailing comma
+#define PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
+        _Pragma("GCC diagnostic ignored \"-Wpragmas\"");                 \
+        _Pragma("GCC diagnostic ignored \"-Wunknown-warning-option\""); \
+    	_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	            \
+        _Pragma("GCC diagnostic ignored \"-Wformat\""); 	            \
+        _Pragma("GCC diagnostic ignored \"-Wunused-variable\"");        \
 
-bool isThisATag(char *main_string, substring_t potential_tag) {
-    dbg("the main string is %s, the substring is [%p - %p]", main_string, potential_tag.start, potential_tag.end);
-    if(main_string == potential_tag.start) { // avoid segfault
-        dbg("returning true for ");
-        printSubstring(potential_tag);
-        return false;
-    }
 
-    dbg("the char is %c", potential_tag.end[1]);
-    if(potential_tag.start[-1] == '{' && potential_tag.end[1] == '}') {
-        dbg("returning true for ");
-        printSubstring(potential_tag);
-        return true;
-    }
-    dbg("returning false for ");
-    printSubstring(potential_tag);
-    return false;
-}
+#define _generic_format(ptr, x)                                         \
+	_Generic((x),                                                       \
+		char: asprintf(ptr, "%c", x),                                   \
+	    unsigned char: asprintf(ptr, "%u", x),                          \
+	    short: asprintf(ptr, "%hd", x),                                 \
+	    unsigned short: asprintf(ptr, "%hu", x),                        \
+	    int: asprintf(ptr, "%d", x),                                    \
+	    unsigned int: asprintf(ptr, "%u", x),                           \
+	    long: asprintf(ptr, "%ld", x),                                  \
+	    unsigned long: asprintf(ptr, "%lu", x),                         \
+	    long long: asprintf(ptr, "%lld", x),                            \
+	    unsigned long long: asprintf(ptr, "%llu", x),                   \
+	    float: asprintf(ptr, "%f", x),                                  \
+	    double: asprintf(ptr, "%lf", x),                                \
+	    long double: asprintf(ptr, "%Lf", x),                           \
+	    char *: asprintf(ptr, "%s", x),                                 \
+	    default: (NULL)                                                 \
+	)	
 
-int compare_substring_start(void *a, void *b) {
-    substring_t *_a = a;
-    substring_t *_b = b;
-    if(_a == NULL && _b != NULL) {
-        return -1;
-    }
-    if(_b == NULL && _a != NULL) {
-        return 1;
-    }
-    if(_a == NULL && _b == NULL) {
-        return 0;
-    }
-    if(_a->start > _b->start) {
-        return 1;
-    }
-    if(_a->start == _b->start) {
-        return 0;
-    }
-    if(_a->start < _b->start) {
-        return -1;
-    }
-}
+#define createReplacementPair(in) 							            \
+	({ 														            \
+		_Pragma("GCC diagnostic push"); 					            \
+        PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
+		char *temp; 										            \
+		typeof(in) _in = in; 									        \
+		_generic_format(&temp, _in);     					            \
+		_Pragma("GCC diagnostic pop");						            \
+		replacement_pair ret = (replacement_pair) { 		            \
+			.key = getIdentifier(#in),						            \
+			.value = temp									            \
+		};													            \
+		ret; }),
+
+#define _createKey(in)                                                  \
+    ({                                                                  \
+        getIdentifier(#in);                                             \
+    })
+	
+
+#define _createValue(in)                                                \
+    ({                                                                  \
+        char *temp;      										        \
+	    typeof(in) _in = in;     								        \
+	    _generic_format(&temp, _in);         					        \
+        temp;                                                           \
+    })	
+
+#define _createKeyValuePairs(in)                                        \
+    { _createKey(in), _createValue(in) },
+
+#define format(fmt, ...)                                                \
+    ({                                                                  \
+        _Pragma("GCC diagnostic push"); 					            \
+        PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
+        char *ret =                                                     \
+            formatd(fmt,                                                \
+                convertKeysToTags(                                      \
+                    dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }))); \
+        _Pragma("GCC diagnostic pop");			    			        \
+        ret;                                                            \
+    })
+
+#define printh(fmt, ...)   										        \
+    ({                                                                  \
+        _Pragma("GCC diagnostic push"); 					            \
+        PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
+        int ret =                                                       \
+            printh(fmt,                                                 \
+                convertKeysToTags(                                      \
+                    dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }))); \
+        _Pragma("GCC diagnostic pop");			    			        \
+        ret;                                                            \
+    })
 
 int main() {
-    char *test = strdup("this {var} a test {var2}\n");
-    dictionary_t replacments = dict({
-        { "var", "is"},
-        { "var2", "string" },
-    });
-    replacments = convertKeysToTags(replacments);
-    test = replaceSubstrings(test, replacments);
-    printf("%s", test);
-    destroyDictionary(replacments);
-    free(test);
-    return 0;
-
-	int a = 5;
-	int b = 10;
-	int c = 15;
-	char *var = "world";
-    char *e = "this";
-    char *f = "is based";
-    
-    // printf("%s\n", strstrTag(e, f, 0));
-
-    // printfi("Hello {var}\n", var = "World", a);
-    // printfi("hello {var}, {e} {f}\n", var, e, f);
-	// printfi("a is {a}, b is {b} and c is {c}\n", a = a, b = b, c = c);
-    auto my_string = replaceSubstrings("Hello {var}, is a {var2}", 
-    dict({
-            {"var", "world"},
-            {"var2", "test"}
-        })
-    );
-    
-    printf("%s", my_string);
+    int num = 10;
+    char *test_string;
+    printh("num is {num}\ntest_string is \"{test_string}\"\n", num = 5, test_string = "hello world");
     return 0;
 }
  
