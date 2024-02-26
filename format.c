@@ -25,6 +25,7 @@
 
 #define __USE_GNU
 #include <dlfcn.h>
+#include <execinfo.h>
 
 const char *getCaller(void) {
     void *callstack[3];
@@ -145,28 +146,38 @@ void destroySubstringSearchResult(substring_search_result_t result_to_destroy) {
     free(result_to_destroy.results);
 }
 
-char *surroundWithBraces(char *text) {
-    if(!text) {
-        return NULL;
-    }
-    size_t len = strlen(text);
-    text = realloc(text, len + 2 + 1);
-    if(!text) {
+char *surroundWithBraces(char text[static 1]) {
+  if (!text) return strdup("{}");
+  int len = strlen(text);
+  if (malloc_usable_size(text) < len + 3) {
+    memmove(text + 1, text, len);
+  } else {
+    char* nbuf = malloc(len + 3);
+    memcpy(nbuf + 1, text, len);
+    free(text);
+    text = nbuf;
+  }
+  text[0] = '{';
+  text[len] = '}';
+  text[len + 1] = 0;
+  return text;
+}
+
+char *surroundWithBraces_old(char text[static 1]) {
+    if(!text || !(text = realloc(text, strlen(text) + 2 + 1))) {
         return NULL;
     }
     size_t index = 0;
     char temp = '{';
-    while(temp) {
-        text[index++] ^= temp ^= text[index] ^= temp;
-    }
+    while(temp ^= text[index++] ^= temp ^= text[index]);
     text[index++] = '}';
     text[index] = '\0';
     return text;
 }
 
-dictionary_t *addTagsToDictionary(dictionary_t *dictionary) {
-    for(size_t index = 0; index < dictionary->entry_count; index++) {
-        dictionary->value[index] = realloc(dictionary->value[index], strlen(dictionary->value[index]) + 2);
+dictionary_t convertKeysToTags(dictionary_t dictionary) {
+    for(size_t index = 0; index < dictionary.entry_count; index++) {
+        dictionary.key[index] = surroundWithBraces(dictionary.key[index]);
     }
     return dictionary;
 }
@@ -336,6 +347,8 @@ substring_t substring(char *start, char *end) {
         substring(start, end); \
     })
 
+int vasprintf(char **str, const char *fmt, va_list args);
+
 int asprintf (char **str, const char *fmt, ...) {
   int size = 0;
   va_list args;
@@ -385,9 +398,8 @@ int vasprintf (char **str, const char *fmt, va_list args) {
 
 #define lengthof(array) (sizeof(array) / sizeof((array)[0]))
 
-int printfi(char *fmt, size_t count, ...);
-char *format(char *fmt, size_t count, ...);
-char *vformat(char *fmt, size_t count, va_list *args);
+int printfi(char *fmt, dictionary_t dictionary);
+char *format(char *fmt, dictionary_t dictionary);
 
 typedef struct { char * key; char *value; } replacement_pair;
 
@@ -431,19 +443,19 @@ char *getIdentifier(char *in) {
 	    default: (-1) \
 	)	
 
-#define createReplacementPair(in) 							\
-	({ 														\
-		_Pragma("GCC diagnostic push"); 					\
-		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	\
-		_Pragma("GCC diagnostic ignored \"-Wunused-variable\""); \
-		char *temp; 										\
+#define createReplacementPair(in) 							    \
+	({ 														    \
+		_Pragma("GCC diagnostic push"); 					    \
+		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	    \
+		_Pragma("GCC diagnostic ignored \"-Wunused-variable\"");\
+		char *temp; 										    \
 		typeof(in) _in = in; 									\
-		_generic_format(&temp, _in);     					\
-		_Pragma("GCC diagnostic pop");						\
-		replacement_pair ret = (replacement_pair) { 		\
-			.key = getIdentifier(#in),						\
-			.value = temp									\
-		};													\
+		_generic_format(&temp, _in);     					    \
+		_Pragma("GCC diagnostic pop");						    \
+		replacement_pair ret = (replacement_pair) { 		    \
+			.key = getIdentifier(#in),						    \
+			.value = temp									    \
+		};													    \
 		ret; }),
 
 char *strstrTag2(char *haystack, char *needle, size_t offset) {
@@ -500,12 +512,9 @@ char *strstrTag(char *haystack, char *needle, size_t offset) {
 	return NULL;
 }
 
-char *format(char *fmt, size_t count, ...) {
+char *format(char *fmt, dictionary_t dictionary) {
     char *output;
-    va_list args;
-    va_start(args, count);
-   	output = vformat(fmt, count, &args);
-    va_end(args);
+   	output = replaceSubstrings(fmt, dictionary);
     return output;
 }
 
@@ -515,18 +524,15 @@ char *format(char *fmt, size_t count, ...) {
 	{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
 	MAP(createReplacementPair, __VA_ARGS__) 0)
 
-int printfi(char *fmt, size_t count, ...) {
-	va_list args;
-	va_start(args, count);
-	char *output = vformat(fmt, count, &args);
+int printfi(char *fmt, dictionary_t dictionary) {
+	char *output = vformat(fmt, dictionary);
 	int output_length = strlen(output);
 	fputs(output, stdout);
-	va_end(args);
 	free(output);
 	return output_length;
 }
 
-#define printfi(fmt, ...) 												 \
+#define printfi(fmt, ...)   												 \
 		printfi(fmt, 														 \
 		lengthof((replacement_pair[]) 										 \
 		{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
@@ -574,7 +580,14 @@ int compare_substring_start(void *a, void *b) {
     }
 }
 
-char *vformat(char *fmt, size_t count, va_list *args) {
+char *vformat(char fmt[static 1], dictionary_t dictionary) {
+    char *output;
+    output = replaceSubstrings(fmt, dictionary);
+    return output;
+}
+
+
+char *vformat_very_old(char *fmt, dictionary_t dictionary) {
     replacement_pair *rep_pairs;
     char *output;
     size_t output_length = strlen(fmt);
@@ -588,102 +601,6 @@ char *vformat(char *fmt, size_t count, va_list *args) {
 
     // create a dictionary and fill it in
 
-    for(size_t i = 0; i < count; i++) {
-    	free(rep_pairs[i].key);
-    	free(rep_pairs[i].value);
-    }
-    free(rep_pairs);
-    return output;
-}
-
-char *vformatOLD2(char *fmt, size_t count, va_list *args) {
-    size_t replacement_list_max_count = 0;
-    struct {
-        size_t count;
-        struct {
-            substring_t tag_in_text;
-            char *insert_string;
-        } *replacer;
-    } replacement_list = {
-        .count = 0,
-    };
-
-    replacement_pair *rep_pairs;
-    char *output;
-    size_t output_length = strlen(fmt);
-  	va_list args_copy;
-    va_copy(args_copy, *args);
-    rep_pairs = malloc(count * sizeof(replacement_pair));
-    for(size_t i = 0; i < count; i++) {
-        rep_pairs[i] = va_arg(args_copy, replacement_pair);
-    }
-    va_end(args_copy);
-
-    // result array
-    substring_search_result_t *search_result = malloc(count * sizeof(substring_search_result_t));
-
-    for(size_t j = 0; j < count; j++) {
-        search_result[j] = searchSubstring(fmt, rep_pairs[j].key);
-        for(size_t index = 0; index < search_result[j].count; index++) {
-            bool is_tag = isThisATag(fmt, search_result[j].results[index]);
-            output_length += (is_tag) *
-            (strlen(rep_pairs[j].value - strlen(rep_pairs[j].key) - 2));
-            
-            if(!is_tag) { // delete those substrings that arent tags
-                search_result[j].results[index].start = NULL;
-                search_result[j].results[index].end = NULL;
-            } else { // expand to include {}
-                search_result[j].results[index].start--;
-                search_result[j].results[index].end++;
-                replacement_list_max_count++;
-            }
-        } 
-        dbg("number of occurences: %d \n", search_result[j].count); 
-    }
-
-    replacement_list.replacer = malloc(replacement_list_max_count * sizeof(replacement_list.replacer));
-    
-    
-    for(size_t result_index = 0; result_index < count; result_index++) {
-        for(size_t index = 0; index < search_result[result_index].count; index++) {
-
-            if(search_result[result_index].results[index].start != NULL) {
-                replacement_list.replacer[replacement_list.count].tag_in_text = search_result[result_index].results[index];
-                replacement_list.replacer[replacement_list.count].insert_string = rep_pairs[result_index].value;
-                replacement_list.count++;
-                dbg("\n\ncurrently proccesing");
-                printSubstring(search_result[result_index].results[index]);
-                dbg("\nthe count is being set to %d", replacement_list.count);
-                printf("\n----------\n");
-            } 
-                dbg("this is after the if, token:");
-                printSubstring(search_result[result_index].results[index]);
-                printf("\n");
-        }
-    }
-
-    qsort(replacement_list.replacer, replacement_list.count, sizeof(replacement_list.replacer[0]), compare_substring_start);
-    dbg("qsort should have sorted its input");
-
-    dbg("the count is %d", replacement_list.count);
-    for(size_t index = 0; index < replacement_list.count; index++) {
-        printSubstring(replacement_list.replacer[index].tag_in_text);
-    }
-
-    #if DEBUG
-    dbg("the found key table:");
-    for(size_t index = 0; index < count; index++) {
-        printSubstringSearchResult(search_result[index]);
-        printf(", ");
-    }
-    printf("\b \b\n");
-    #endif // DEBUG
-    output = malloc((output_length >= strlen(fmt)) ? output_length : strlen(fmt));
-    dbg("the output length is %d, the output is %p", output_length, output);
-    strncpy(output, fmt, strlen(fmt));
-    // after that we replace what needs to be replaced
-
-    free(search_result);
     for(size_t i = 0; i < count; i++) {
     	free(rep_pairs[i].key);
     	free(rep_pairs[i].value);
@@ -759,12 +676,21 @@ char *vformatOld(char *fmt, size_t count, va_list *args) {
     return output;
 }
 
+char *format(char *fmt, dictionary_t replacments) {}
+
 int main() {
-    char *test = strdup("this is a test string");
-    test = surroundWithBraces(test);
+    char *test = strdup("this {var} a test {var2}\n");
+    dictionary_t replacments = dict({
+        { "var", "is"},
+        { "var2", "string" },
+    });
+    replacments = convertKeysToTags(replacments);
+    test = replaceSubstrings(test, replacments);
     printf("%s", test);
+    destroyDictionary(replacments);
     free(test);
     return 0;
+
 	int a = 5;
 	int b = 10;
 	int c = 15;
@@ -779,8 +705,8 @@ int main() {
 	// printfi("a is {a}, b is {b} and c is {c}\n", a = a, b = b, c = c);
     auto my_string = replaceSubstrings("Hello {var}, is a {var2}", 
     dict({
-            {"{var}", "world"},
-            {"{var2}", "test"}
+            {"var", "world"},
+            {"var2", "test"}
         })
     );
     
