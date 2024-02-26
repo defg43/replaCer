@@ -440,7 +440,7 @@ char *getIdentifier(char *in) {
 	    double: asprintf(ptr, "%lf", x), \
 	    long double: asprintf(ptr, "%Lf", x), \
 	    char *: asprintf(ptr, "%s", x), \
-	    default: (-1) \
+	    default: (NULL) \
 	)	
 
 #define createReplacementPair(in) 							    \
@@ -518,14 +518,48 @@ char *format(char *fmt, dictionary_t dictionary) {
     return output;
 }
 
-#define format(fmt, ...) 												 \
-	format(fmt, 														 \
-	lengthof((replacement_pair[]) 										 \
-	{MAP(createReplacementPair, __VA_ARGS__)}), 						 \
-	MAP(createReplacementPair, __VA_ARGS__) 0)
+#define _createKey()                                            \
+    _Pragma("GCC diagnostic push"); 					        \
+	_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	        \
+	_Pragma("GCC diagnostic ignored \"-Wunused-variable\"");    \
+    
+        
+#define _createValue()
+
+#define _createKeyValuePairs(in) \
+    { _createKey(in), _createValue(in) }
+                                                                    \
+    ({                                                              \
+        _Pragma("GCC diagnostic push"); 					        \
+		_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	        \
+		_Pragma("GCC diagnostic ignored \"-Wunused-variable\"");    \
+        char *temp;      										    \
+		typeof(in) _in = in;     									\
+		_generic_format(&temp, _in);         					    \
+		_Pragma("GCC diagnostic pop");			    			    \
+		replacement_pair ret = (replacement_pair) {     		    \
+			.key = getIdentifier(#in),					    	    \
+			.value = temp								    	    \
+		};													        \
+		ret;                                                        \
+    })                                                      
+
+#define format_old(fmt, ...) 												\
+	format(fmt, 														    \
+	lengthof((replacement_pair[]) 										    \
+	{MAP(createReplacementPair, __VA_ARGS__)}),        						\
+	MAP(createReplacementPair, __VA_ARGS__) 0)                              \
+
+#define format()                                                            \
+    format(fmt,                                                             \
+        dict(                                                               \
+            MAP()
+        )
+    )
+
 
 int printfi(char *fmt, dictionary_t dictionary) {
-	char *output = vformat(fmt, dictionary);
+	char *output = format(fmt, dictionary);
 	int output_length = strlen(output);
 	fputs(output, stdout);
 	free(output);
@@ -579,104 +613,6 @@ int compare_substring_start(void *a, void *b) {
         return -1;
     }
 }
-
-char *vformat(char fmt[static 1], dictionary_t dictionary) {
-    char *output;
-    output = replaceSubstrings(fmt, dictionary);
-    return output;
-}
-
-
-char *vformat_very_old(char *fmt, dictionary_t dictionary) {
-    replacement_pair *rep_pairs;
-    char *output;
-    size_t output_length = strlen(fmt);
-  	va_list args_copy;
-    va_copy(args_copy, *args);
-    rep_pairs = malloc(count * sizeof(replacement_pair));
-    for(size_t i = 0; i < count; i++) {
-        rep_pairs[i] = va_arg(args_copy, replacement_pair);
-    }
-    va_end(args_copy);
-
-    // create a dictionary and fill it in
-
-    for(size_t i = 0; i < count; i++) {
-    	free(rep_pairs[i].key);
-    	free(rep_pairs[i].value);
-    }
-    free(rep_pairs);
-    return output;
-}
-
-char *vformatOld(char *fmt, size_t count, va_list *args) {
-    replacement_pair *rep_pairs;
-    char *output;
-    size_t output_length = 0;
-  	va_list args_copy;
-    va_copy(args_copy, *args);
-    rep_pairs = malloc(count * sizeof(replacement_pair));
-    for(size_t i = 0; i < count; i++) {
-        rep_pairs[i] = va_arg(args_copy, replacement_pair);    
-    }
-    va_end(args_copy);
-    // calculate the length of the final string
-    size_t index = 0;
-    char *tag_ptr;
-    while(fmt[index] != '\0') {
-        int found = 0;
-        for(size_t i = 0; i < count; i++) {
-            if((tag_ptr = strstrTag(fmt, rep_pairs[i].key, index))) {
-                // Calculate the length of the token found and add it to the output length
-                output_length += tag_ptr - fmt + strlen(rep_pairs[i].value);
-                // Update the index to continue the search
-                index = tag_ptr - fmt + 3 + strlen(rep_pairs[i].key);
-                found = 1;
-                break;  // Exit the loop after finding the first match
-            }
-        }
-        if (!found) {
-            // If no replacement is found, add the remaining part of the string to the output length
-            output_length += strlen(fmt + index);
-            break;  // Exit the loop since no more replacements are possible
-        }
-    }
-    
-    // Allocate memory for the final output string
-    output = malloc(output_length + 1);  // +1 for the null terminator
-
-    // Build the final string
-    size_t output_index = 0;
-    index = 0;
-    size_t braces_stack = 0;
-    char *brace_start_ptr;
-    char *brace_end_ptr;
-    substring_t potential_key;
-    while(fmt[index] != '\0') { // opening an closing braces should be counted
-        if(fmt[index] == '{') {
-            braces_stack ++;
-            brace_start_ptr = fmt + index;
-			int run_ahead_index = 0;               
-                while(fmt[++run_ahead_index]) {
-                    braces_stack += fmt[run_ahead_index] == '{';
-                    braces_stack -= (fmt[run_ahead_index] == '}') && braces_stack;
-                    if(!braces_stack) {
-                        brace_end_ptr = fmt + run_ahead_index;
-                        potential_key = substring(brace_start_ptr + 1, brace_end_ptr - 1);
-                    }
-            }
-		}			
-        output[output_index] = fmt[index];
-    }
-    for(size_t i = 0; i < count; i++) {
-    	free(rep_pairs[i].key);
-    	free(rep_pairs[i].value);
-    }
-    free(rep_pairs);
-    return output;
-}
-
-char *format(char *fmt, dictionary_t replacments) {}
 
 int main() {
     char *test = strdup("this {var} a test {var2}\n");
