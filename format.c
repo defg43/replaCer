@@ -23,7 +23,6 @@
 #define dbg(fmt, ...)
 #endif
 
-
 #define __USE_GNU
 #include <dlfcn.h>
 #include <execinfo.h>
@@ -408,6 +407,7 @@ int main() {
     int num = 10;
     char *test_string;
     printh("num is {num}\ntest_string is \"{test_string}\"\n", num = 5, test_string = "hello world");
+    printh("my number is {}\n", 3);
     return 0;
 }
  
