@@ -9,39 +9,9 @@
 #include "map.h"
 #include <malloc.h>
 
-#define lengthof(array) (sizeof(array) / sizeof((array)[0]))
+#define DEBUG
+#include "debug.h"
 
-#if DEBUG
-#define free(x) ({dbg("freeing variable %s with the value %p", #x, x); free(x);})
-#define dbg(fmt, ...) \
-    ({  \
-        printf("[debug: %s @ %d in %s from %s] " fmt "\n", \
-        __FUNCTION__, __LINE__, __FILE__, getCaller() __VA_OPT__(, __VA_ARGS__)); \
-        sleep(0); \
-    })
-#else
-#define dbg(fmt, ...)
-#endif
-
-#define __USE_GNU
-#include <dlfcn.h>
-#include <execinfo.h>
-
-const char *getCaller(void) {
-    void *callstack[3];
-    const int maxFrames = sizeof(callstack) / sizeof(callstack[0]);
-    Dl_info info;
-
-    backtrace(callstack, maxFrames);
-
-    if (dladdr(callstack[2], &info) && info.dli_sname != NULL) {
-        // printf("I was called from: %s\n", info.dli_sname);
-        return info.dli_sname;
-    } else {
-        // printf("Unable to determine calling function\n");
-        return "<?>";
-    }
-}
 
 typedef struct {
     char *start;
@@ -139,30 +109,51 @@ void printSubstring(substring_t substr) {
 
 
 char * strdup(const char * s) {
-  size_t len = 1 + strlen(s);
-  char *p = malloc(len);
+  	size_t len = 1 + strlen(s);
+  	char *p = malloc(len);
 
-  return p ? memcpy(p, s, len) : NULL;
+  	return p ? memcpy(p, s, len) : NULL;
+}
+
+char *surroundWithBraces_old(char *text) {
+	dbg("called btw");
+  	if (!text) {
+    	return strdup("{}");
+  	}
+  	size_t len = strlen(text);
+  	if (malloc_usable_size(text) < len + 3) {
+    	memmove(text + 1, text, len);
+  	} else {
+    	char *nbuf = malloc(len + 3);
+    	memcpy(nbuf + 1, text, len);
+    	free(text);
+    	text = nbuf;
+  	}
+  	text[0] = '{';
+  	text[len + 1] = '}';
+  	text[len + 2] = '\0';
+  	return text;
 }
 
 char *surroundWithBraces(char *text) {
-  if (!text) {
-    return strdup("{}");
-  }
-  size_t len = strlen(text);
-  if (malloc_usable_size(text) < len + 3) {
-    memmove(text + 1, text, len);
-  } else {
-    char *nbuf = malloc(len + 3);
-    memcpy(nbuf + 1, text, len);
-    free(text);
-    text = nbuf;
-  }
-  text[0] = '{';
-  text[len + 1] = '}';
-  text[len + 2] = '\0';
-  return text;
+    if (!text) {
+        return strdup("{}");
+    }
+
+    size_t len = strlen(text);
+    char *new_text = realloc(text, len + 3);
+    if (!new_text) {
+        return NULL;
+    }
+
+    memmove(new_text + 1, new_text, len);
+    new_text[0] = '{';
+    new_text[len + 1] = '}';
+    new_text[len + 2] = '\0';
+	dbg("%s", new_text);
+    return new_text;
 }
+
 
 dictionary_t convertKeysToTags(dictionary_t dictionary) {
     for(size_t index = 0; index < dictionary.entry_count; index++) {
@@ -189,7 +180,7 @@ char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
     }
 
     // Allocate memory for the modified string
-    char *outputString = (char *)malloc(outputLength + 1);
+    char *outputString = malloc(outputLength + 1);
     if (outputString == NULL) {
         fprintf(stderr, "Memory allocation error\n");
         exit(EXIT_FAILURE);
@@ -251,34 +242,34 @@ int asprintf (char **str, const char *fmt, ...) {
 }
 
 int vasprintf (char **str, const char *fmt, va_list args) {
-  int size = 0;
-  va_list tmpa;
+  	int size = 0;
+  	va_list tmpa;
+	
+  	// copy
+  	va_copy(tmpa, args);
+	
+  	// apply variadic arguments to
+  	// sprintf with format to get size
+  	size = vsnprintf(NULL, 0, fmt, tmpa);
+	
+  	// toss args
+  	va_end(tmpa);
+	
+  	// return -1 to be compliant if
+  	// size is less than 0
+  	if (size < 0) { return -1; }
+	
+  	// alloc with size plus 1 for `\0'
+  	*str = (char *) malloc(size + 1);
+	
+  	// return -1 to be compliant
+  	// if pointer is `NULL'
+  	if (NULL == *str) { return -1; }
 
-  // copy
-  va_copy(tmpa, args);
-
-  // apply variadic arguments to
-  // sprintf with format to get size
-  size = vsnprintf(NULL, 0, fmt, tmpa);
-
-  // toss args
-  va_end(tmpa);
-
-  // return -1 to be compliant if
-  // size is less than 0
-  if (size < 0) { return -1; }
-
-  // alloc with size plus 1 for `\0'
-  *str = (char *) malloc(size + 1);
-
-  // return -1 to be compliant
-  // if pointer is `NULL'
-  if (NULL == *str) { return -1; }
-
-  // format string with original
-  // variadic arguments and set new size
-  size = vsprintf(*str, fmt, args);
-  return size;
+	// format string with original
+  	// variadic arguments and set new size
+  	size = vsprintf(*str, fmt, args);
+  	return size;
 } // end of asprintf
 
 int getIdentifierIndex(char *in, size_t index) {
@@ -295,6 +286,9 @@ int getIdentifierIndex(char *in, size_t index) {
 }
 
 char *stringAfter(char *in, size_t index) {
+	if(in == NULL) {
+		return NULL;
+	}
 	size_t length = strlen(in);
 	index = (length <= index) ? length: index;
 	char *substring;
@@ -305,10 +299,84 @@ char *stringAfter(char *in, size_t index) {
 char *getIdentifier(char *in) {
 	return stringAfter(in, getIdentifierIndex(in, 0));
 }
+
+// buf is going to be edited by 
+char *positionalInsert(char *buf, dictionary_t dictionary) {
+	if(buf == NULL) {
+		return NULL;
+	}
+	printf("hello test \n");
+	
+	size_t len = strlen(buf);
+	// keeps track of number of {} and indexes
+	// into the dictionary correctly	
+	size_t dictionary_index = 0; 
+	
+	size_t index = 0;
+	char ch;
+	printf("pre while\n");
+	printf("the character from the buffer is %s \n", buf);
+	while(ch = buf[index]) {
+		printf("main loop running, the index is %ld\n", index);
+		dbgstr(buf, index);
+		if(ch = '{') {
+			size_t run = index + 1;
+			size_t temp_number = 0;
+			printf("----------\n%c + %c\n", buf[index], buf[index + 1]);
+			if(buf[index + 1] == '}') {
+				dictionary_index++; // todo insert value from index
+				printf("#########the dictionary index is %ld\n", dictionary_index);
+				size_t val_len = strlen(dictionary.value[dictionary_index - 1]);
+				size_t new_length = len + val_len + 1024;
+				buf = realloc(buf, new_length);
+				assert(buf);
+				// :(
+				memmove(buf + index + val_len - 2, buf + index, len - index);
+				strncpy(buf + index, dictionary.value[dictionary_index - 1], 
+					strlen(dictionary.value[dictionary_index - 1]));
+				printf("++++++%s\n", buf);
+			} else {
+				while(('0' <= buf[run] && buf[run] <= '9') || buf[run] == ' ') {
+					temp_number *= 10;
+					temp_number += buf[run] - '0';
+					run++;
+					dbg("the char is %c, total number %ld\n", buf[run], temp_number);
+				} 
+
+				size_t end = run + 1;
+				char end_char;
+				while(end_char = buf[end]) {
+					printf("running end tests\n");
+					if(end_char == '}') {
+						// end found
+
+						// set dictionary_index to the number
+						dictionary_index = temp_number;
+						printf("hello test\n");
+						printf("#########the dictionary index is %ld\n", dictionary_index);
+						break;
+					} else if(end_char == ' ') {
+						// keep searching for end
+						end++;
+					} else {
+						printf("no end possible\n");
+						break;
+						// end not possible
+						// discard results
+					}
+				}
+			}
+		}
+	printf("incrementing index\n");
+	index++;
+	}
+	printf("--->%s\n", dictionary.value[dictionary_index - 1]);
+	return NULL;	
+}
                                                                                           
-char *format(char *fmt, dictionary_t dictionary) {
+char *format(char *buf, dictionary_t dictionary) {
     char *output;
-   	output = replaceSubstrings(fmt, dictionary);
+   	output = replaceSubstrings(buf, dictionary);
     return output;
 }
 
@@ -322,7 +390,7 @@ int printh(char *fmt, __attribute_maybe_unused__ dictionary_t dictionary) {
 }
 
 #define PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-        _Pragma("GCC diagnostic ignored \"-Wpragmas\"");                 \
+        _Pragma("GCC diagnostic ignored \"-Wpragmas\"");                \
         _Pragma("GCC diagnostic ignored \"-Wunknown-warning-option\""); \
     	_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	            \
         _Pragma("GCC diagnostic ignored \"-Wformat\""); 	            \
@@ -379,35 +447,61 @@ int printh(char *fmt, __attribute_maybe_unused__ dictionary_t dictionary) {
 #define _createKeyValuePairs(in)                                        \
     { _createKey(in), _createValue(in) },
 
+
 #define format(fmt, ...)                                                \
     ({                                                                  \
         _Pragma("GCC diagnostic push"); 					            \
         PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-        char *ret =                                                     \
-            formatd(fmt,                                                \
-                convertKeysToTags(                                      \
-                    dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }))); \
+        auto tmp = convertKeysToTags(                                   \
+	        dict({ MAP(_createKeyValuePairs, __VA_ARGS__) })); 			\
+        char *ret = format(fmt, tmp);									\
         _Pragma("GCC diagnostic pop");			    			        \
+        destroyDictionary(tmp);											\
         ret;                                                            \
     })
 
+// the dictionary created here is temporary and should be freed here too
 #define printh(fmt, ...)   										        \
     ({                                                                  \
         _Pragma("GCC diagnostic push"); 					            \
         PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-        int ret =                                                       \
-            printh(fmt,                                                 \
-                convertKeysToTags(                                      \
-                    dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }))); \
+        auto tmp = convertKeysToTags(									\
+        	dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }));			\
+        int ret = printh(fmt, tmp); 									\
         _Pragma("GCC diagnostic pop");			    			        \
+        destroyDictionary(tmp);											\
         ret;                                                            \
     })
 
+#if 1
+
+int main() { 
+	int a[] = { 1, 2, 3, 4 };
+	int b = 2;
+	bool contained = _compareWithAnyofArray(b, a);
+	if(contained)
+		printf("yes\n");
+	else
+		printf("no\n");
+	char *test = strdup("this \n\n is a test string to demonstrate pointer highligthing");
+	size_t my_favorite_variable = 11, ptr = 22, foo = 1, bar = 15;
+	dbgstr(test, my_favorite_variable, ptr, foo, bar);
+}
+#else
 int main() {
+	char *test = "the first test string is {} and the second string is {}";
+	test = strdup(test);
+	
+	positionalInsert(test, dict({{ "1", "foostring"}, { "2", "barstring"}}));
+	
     int num = 10;
     char *test_string;
     printh("num is {num}\ntest_string is \"{test_string}\"\n", num = 5, test_string = "hello world");
     printh("my number is {}\n", 3);
+
+	dbg("hello there");
+	int test2;
+	printh("test is {test2}\n", test2 = 10);
     return 0;
 }
- 
+#endif
