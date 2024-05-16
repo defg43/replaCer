@@ -12,7 +12,7 @@
 #ifdef DEBUG
 #define dbg(fmt, ...) \
     ({  \
-        printf("[debug: %s @ %d in %s from %s] " fmt "\n", \
+        printf("[\e[93mdebug\e[0m: %s @ %d in %s from %s] " fmt "\n", \
         __FUNCTION__, __LINE__, __FILE__, getCaller() __VA_OPT__(, __VA_ARGS__)); \
     })
 #else
@@ -27,8 +27,6 @@
 	}																				\
 	matches;																		\
 })
-
-#define x 
 
 #define _stringify_comma(x) _stringify_comma_defer(x)
 #define _stringify_comma_defer(x) #x,
@@ -80,7 +78,6 @@
 						compensation++;												\
 					}																\
 				}																	\
-				end:																\
 				arrow_pos[entry] = idx[entry] + compensation;						\
 				arrow_count++;														\
 				compensation = 0;													\
@@ -148,7 +145,7 @@
 })
 
 #else
-#define dbgstr(fmt, idx)
+#define dbgstr(strin, ...)
 #endif
 
 #ifdef __GNUC__

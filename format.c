@@ -11,8 +11,6 @@
 
 #define DEBUG
 #include "debug.h"
-
-
 typedef struct {
     char *start;
     char *end;
@@ -23,6 +21,11 @@ typedef struct {
     char **key;
     char **value;
 } dictionary_t;
+
+typedef struct {
+	bool success;
+	size_t index;
+} dictionary_index_search_t;
 
 // string functions prototypes
 int printh(char *fmt, dictionary_t dictionary); // better name ?
@@ -162,7 +165,7 @@ dictionary_t convertKeysToTags(dictionary_t dictionary) {
     return dictionary;
 }
 
-char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
+char *replaceSubstrings_old(char *inputString, dictionary_t dictionary) {
     // Calculate the length of the modified string
     size_t inputLength = strlen(inputString);
     size_t outputLength = inputLength;
@@ -211,6 +214,149 @@ char *replaceSubstrings(char *inputString, dictionary_t dictionary) {
     outputString[currentIndex] = '\0'; // Null-terminate the output string
 
     return outputString;
+}
+
+char *replaceSubstrings_new(char *inputString, dictionary_t dictionary) {
+    // Calculate the length of the modified string
+    size_t inputLength = strlen(inputString);
+    size_t outputLength = inputLength;
+
+    for (size_t i = 0; i < dictionary.entry_count; i++) {
+        char *substring = dictionary.key[i];
+        char *replacement = dictionary.value[i];
+
+        // Count occurrences of substring
+        char *pos = inputString;
+        while ((pos = strstr(pos, substring)) != NULL) {
+            outputLength += strlen(replacement) - strlen(substring);
+            pos += strlen(substring);
+        }
+    }
+
+    // Allocate memory for the modified string
+    char *outputString = malloc(outputLength + 1);
+    if (outputString == NULL) {
+        fprintf(stderr, "Memory allocation error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Copy and replace substrings
+    size_t currentIndex = 0;
+    for (size_t i = 0; i < inputLength; i++) {
+        int match_found = 0;
+        for (size_t j = 0; j < dictionary.entry_count; j++) {
+            char *substring = dictionary.key[j];
+            char *replacement = dictionary.value[j];
+
+            if (strncmp(inputString + i, substring, strlen(substring)) == 0) {
+                strcpy(outputString + currentIndex, replacement);
+                currentIndex += strlen(replacement);
+                i += strlen(substring) - 1;  // Move the index past the matched substring
+                match_found = 1;
+                break;
+            }
+        }
+
+        if (!match_found) {
+            outputString[currentIndex++] = inputString[i];
+        }
+    }
+
+    outputString[currentIndex] = '\0'; // Null-terminate the output string
+	free(inputString);
+    return outputString;
+}
+
+size_t countSubstring(const char *str, const char *sub) {
+  size_t count = 0;
+  size_t len_sub = strlen(sub);
+	// Iterate through the main string
+	for (size_t i = 0; str[i] != '\0'; i++) {
+    	// Check if substring matches at current position
+    	if (strncmp(str + i, sub, len_sub) == 0) {
+      		count++;
+      		// Move i to the end of the substring to avoid counting overlaps
+      		i += len_sub - 1;
+    	}
+  	}
+
+	return count;
+}
+dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, dictionary_t dictionary) {
+    dictionary_index_search_t result;
+    result.success = false;
+    result.index = 0;
+
+    // Iterate through the dictionary keys to find a match
+    for (size_t i = 0; i < dictionary.entry_count; i++) {
+        size_t key_len = strlen(dictionary.key[i]);
+
+        // Check if there are enough characters remaining in str to compare with the key
+        if (index + key_len <= strlen(str) && strncmp(str + index, dictionary.key[i], key_len) == 0) {
+            result.success = true;
+            result.index = i;
+            return result;
+        }
+    }
+    return result;
+}
+
+#include <stdint.h>
+
+char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
+    // Calculate the difference in length for all replacements
+	dbg("the received string is %s", input_string);
+	size_t curstrlen = strlen(input_string);
+    int64_t max_increase = 0;
+    int64_t max_decrease = 0;
+    int64_t diff = 0; // im sure this wont backfire
+    int64_t len_diff = 0;
+    for (size_t i = 0; i < dictionary.entry_count; i++) {
+        diff = 
+			countSubstring(input_string, dictionary.key[i]) * strlen(dictionary.value[i]) - 
+			countSubstring(input_string, dictionary.key[i]) * strlen(dictionary.key[i]);
+            dbg("diff: %ld", diff);
+        if(diff > INT64_MAX || diff < INT64_MIN) {
+            fprintf(stderr, "congrats, string difference is so large that it doesnt fit into 64 bit\n");
+            fprintf(stderr, "%s @ %d in %s\n", __FUNCTION__, __LINE__, __FILE__);
+            exit(EXIT_FAILURE);
+        }
+        if(diff < 0) {
+            max_decrease += diff;
+        } else {
+            max_increase += diff;
+        }
+    }
+    len_diff = max_increase + max_decrease;
+    dbg("max_increase: %ld, max_decrease: %ld, len_diff %ld", max_increase, max_decrease, len_diff);
+
+    // Reallocate memory for the modified string with extra space for null terminator
+    size_t new_len = strlen(input_string) + max_increase + 1;
+	dbg("the new length is %ld, the old was %ld\n", new_len, strlen(input_string));
+    input_string = realloc(input_string, new_len);
+    if (input_string == NULL) {
+        fprintf(stderr, "realloc in replaceSubstrings failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+	size_t iter = 0;
+	while(input_string[iter]) {
+		dictionary_index_search_t search = sequenceMatchesDictionaryKey(input_string, iter, dictionary);
+        dbgstr(input_string, iter);
+		if(search.success) {
+			//get length to push back
+			size_t pushback_len = strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
+            dbg("the pushback_len is: %ld", pushback_len);
+            dbgstr(input_string, iter, iter + pushback_len);
+			memmove(input_string + iter + pushback_len, input_string + iter, curstrlen - iter);
+            input_string[iter + pushback_len] = '\0';
+			curstrlen += strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
+			strncpy(input_string + iter, dictionary.value[search.index], strlen(dictionary.value[search.index]));
+            iter += strlen(dictionary.value[search.index]) - 1;
+  		}
+		iter++;
+	}
+    return realloc(input_string, strlen(input_string));
 }
 
 substring_t substring(char *start, char *end) {
@@ -305,8 +451,7 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
 	if(buf == NULL) {
 		return NULL;
 	}
-	printf("hello test \n");
-	
+
 	size_t len = strlen(buf);
 	// keeps track of number of {} and indexes
 	// into the dictionary correctly	
@@ -314,75 +459,77 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
 	
 	size_t index = 0;
 	char ch;
-	printf("pre while\n");
-	printf("the character from the buffer is %s \n", buf);
 	while(ch = buf[index]) {
-		printf("main loop running, the index is %ld\n", index);
+		dbg("main loop running, the index is %ld\n", index);
 		dbgstr(buf, index);
-		if(ch = '{') {
+		if(ch == '{') {
+			dbg("the charcter ch is now \e[0;31m%c\e[0m (should be '{')", buf[index]);
 			size_t run = index + 1;
 			size_t temp_number = 0;
-			printf("----------\n%c + %c\n", buf[index], buf[index + 1]);
+			dbgstr(buf, index);
 			if(buf[index + 1] == '}') {
 				dictionary_index++; // todo insert value from index
-				printf("#########the dictionary index is %ld\n", dictionary_index);
+				dbg("dictionary index: %ld\n", dictionary_index);
 				size_t val_len = strlen(dictionary.value[dictionary_index - 1]);
-				size_t new_length = len + val_len + 1024;
+				size_t new_length = len + val_len;
 				buf = realloc(buf, new_length);
 				assert(buf);
 				// :(
 				memmove(buf + index + val_len - 2, buf + index, len - index);
 				strncpy(buf + index, dictionary.value[dictionary_index - 1], 
 					strlen(dictionary.value[dictionary_index - 1]));
-				printf("++++++%s\n", buf);
+				len = strlen(buf);
+				dbg("->%s\n", buf);
 			} else {
+				dbg("entering number construction segment");
 				while(('0' <= buf[run] && buf[run] <= '9') || buf[run] == ' ') {
 					temp_number *= 10;
 					temp_number += buf[run] - '0';
 					run++;
-					dbg("the char is %c, total number %ld\n", buf[run], temp_number);
+					dbg("constructed number is %ld", temp_number);
+					dbgstr(buf, index, run);
 				} 
 
 				size_t end = run + 1;
 				char end_char;
 				while(end_char = buf[end]) {
-					printf("running end tests\n");
+					dbg("end tests");
 					if(end_char == '}') {
 						// end found
 
 						// set dictionary_index to the number
 						dictionary_index = temp_number;
-						printf("hello test\n");
-						printf("#########the dictionary index is %ld\n", dictionary_index);
+						dbg("dictionary index: %ld\n", dictionary_index);
 						break;
 					} else if(end_char == ' ') {
 						// keep searching for end
 						end++;
 					} else {
-						printf("no end possible\n");
+						dbg("no end possible");
 						break;
 						// end not possible
 						// discard results
 					}
 				}
 			}
+		} else {
+			dbg("skipping to next character");
 		}
-	printf("incrementing index\n");
-	index++;
+		index++;
 	}
-	printf("--->%s\n", dictionary.value[dictionary_index - 1]);
-	return NULL;	
+	dbg("->%s\n", buf);
+	return buf;	
 }
                                                                                           
 char *format(char *buf, dictionary_t dictionary) {
     char *output;
+	// output = positionalInsert(buf, dictionary);
    	output = replaceSubstrings(buf, dictionary);
     return output;
 }
 
 int printh(char *fmt, __attribute_maybe_unused__ dictionary_t dictionary) {
-	char *output = format(fmt, dictionary);
-    dbg("the is %s", output);
+	char *output = format(strdup(fmt), dictionary);
     int output_length = strlen(output);
 	fputs(output, stdout);
 	free(output);
@@ -473,35 +620,30 @@ int printh(char *fmt, __attribute_maybe_unused__ dictionary_t dictionary) {
         ret;                                                            \
     })
 
-#if 1
+#if 0
 
 int main() { 
-	int a[] = { 1, 2, 3, 4 };
-	int b = 2;
-	bool contained = _compareWithAnyofArray(b, a);
-	if(contained)
-		printf("yes\n");
-	else
-		printf("no\n");
-	char *test = strdup("this \n\n is a test string to demonstrate pointer highligthing");
-	size_t my_favorite_variable = 11, ptr = 22, foo = 1, bar = 15;
-	dbgstr(test, my_favorite_variable, ptr, foo, bar);
+    auto str = "test a eee a";
+    auto dt = dict({{"eee", "fff"}, {"a", "b"}});
+    dictionary_index_search_t ind = sequenceMatchesDictionaryKey(str, 5, dt);
+    dbg("success %s, index %ld", ind.success ? "true" : "false", ind.index);
 }
 #else
 int main() {
-	char *test = "the first test string is {} and the second string is {}";
-	test = strdup(test);
-	
-	positionalInsert(test, dict({{ "1", "foostring"}, { "2", "barstring"}}));
-	
-    int num = 10;
-    char *test_string;
-    printh("num is {num}\ntest_string is \"{test_string}\"\n", num = 5, test_string = "hello world");
-    printh("my number is {}\n", 3);
 
-	dbg("hello there");
-	int test2;
-	printh("test is {test2}\n", test2 = 10);
-    return 0;
+/*	char *str = "test {var}, hihi";
+	str = strdup(str);
+	str = replaceSubstrings_new(str, dict({{"{var}", "abc123456789"}}));
+	puts(str);
+	exit(EXIT_SUCCESS);
+*/
+	// printh("the first test string is {} and the second string is {}\n", "foostring", "barstring");
+
+	char *foo, *bar;
+    char *aaaaa;
+	printh("the foo is {foo} and bar is {bar}, the first was {foo}\n", foo = "test1______", bar = "test2");
+	printh("{bar}{bar}{bar}\n", bar = "- - - - - - - |");
+    printh("{aaaaa} e {aaaaa}", aaaaa = "a");
+	return 0;
 }
 #endif
