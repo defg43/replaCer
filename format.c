@@ -348,8 +348,9 @@ char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
 			size_t pushback_len = strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
             dbg("the pushback_len is: %ld", pushback_len);
             dbgstr(input_string, iter, iter + pushback_len);
-			memmove(input_string + iter + pushback_len, input_string + iter, curstrlen - iter);
-            input_string[iter + pushback_len] = '\0';
+			memmove(input_string + iter + strlen(dictionary.key[search.index]) + pushback_len, 
+                input_string + iter + strlen(dictionary.key[search.index]), curstrlen - iter);
+            // input_string[iter + pushback_len] = '\0';
 			curstrlen += strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
 			strncpy(input_string + iter, dictionary.value[search.index], strlen(dictionary.value[search.index]));
             iter += strlen(dictionary.value[search.index]) - 1;
@@ -643,7 +644,7 @@ int main() {
     char *aaaaa;
 	printh("the foo is {foo} and bar is {bar}, the first was {foo}\n", foo = "test1______", bar = "test2");
 	printh("{bar}{bar}{bar}\n", bar = "- - - - - - - |");
-    printh("{aaaaa} e {aaaaa}", aaaaa = "a");
+    printh("{aaaaa} e {aaaaa}e", aaaaa = "a");
 	return 0;
 }
 #endif
