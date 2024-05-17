@@ -7,9 +7,9 @@
 #define lengthof(array) (sizeof(array) / sizeof((array)[0]))
 #endif
 
-#define free(x) ({dbg("freeing variable %s with the value %p", #x, x); free(x);})
 
 #ifdef DEBUG
+#define free(x) ({dbg("freeing variable %s with the value %p", #x, x); free(x);})
 #define dbg(fmt, ...) \
     ({  \
         printf("[\e[93mdebug\e[0m: %s @ %d in %s from %s] " fmt "\n", \
@@ -51,7 +51,7 @@
 
 #define dbgstr(strin, ...) ({														\
 		char *str = strin; 															\
-		size_t idx[] = { MAP(_dbgstr_convert_ptr_to_diff, __VA_ARGS__) };												\
+		size_t idx[] = { MAP(_dbgstr_convert_ptr_to_diff, __VA_ARGS__) };			\
 		const char *varname[] = { MAP(_stringify_comma, __VA_ARGS__) };				\
         size_t len = strlen(str); 													\
         size_t index = 0;															\
@@ -148,10 +148,10 @@
 #define dbgstr(strin, ...)
 #endif
 
-#ifdef __GNUC__
-
+#if 0// defined(__GNUC__)
 #define __USE_GNU
 #include <dlfcn.h>
+#include <stddef.h>
 #include <execinfo.h>
 const char *getCaller(void) {
     void *callstack[3];

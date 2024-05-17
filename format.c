@@ -1,52 +1,10 @@
-#include <stdio.h>
-#include <stddef.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <assert.h>
-#include <unistd.h>
-#include "map.h"
-#include <malloc.h>
-
-#define DEBUG
+// #define DEBUG
 #include "debug.h"
-typedef struct {
-    char *start;
-    char *end;
-} substring_t;
+#include "format.h"
 
-typedef struct {
-    size_t entry_count;
-    char **key;
-    char **value;
-} dictionary_t;
-
-typedef struct {
-	bool success;
-	size_t index;
-} dictionary_index_search_t;
-
-// string functions prototypes
-int printh(char *fmt, dictionary_t dictionary); // better name ?
-char *format(char *fmt, dictionary_t dictionary);
-char *surroundWithBraces(char *text);
-char *replaceSubstrings(char *inputString, dictionary_t dictionary);
-char *strdup(const char *s);
-substring_t substring(char *start, char *end);
-char *stringAfter(char *in, size_t index);
-void printSubstring(substring_t substr);
-int getIdentifierIndex(char *in, size_t index);
-char *getIdentifier(char *in);
-
-int vasprintf(char **str, const char *fmt, va_list args);
-int asprintf (char **str, const char *fmt, ...);
-
-// dictionary functions 
-dictionary_t createDictionary(size_t count, char *data[count][2]);
-void destroyDictionary(dictionary_t to_destroy);
-dictionary_t convertKeysToTags(dictionary_t dictionary);
-void printDictionary(dictionary_t dictionary);
+#undef substring
+#undef printh
+#undef format
 
 dictionary_t createDictionary(size_t count, char *data[count][2]) {
     dictionary_t dictionary_to_return;
@@ -92,24 +50,6 @@ void printSubstring(substring_t substr) {
         putchar(*ptr);
     }
 }
-
-#define dict(...) ({                                \
-    char *dictionary[][2] = __VA_ARGS__;            \
-    size_t size = lengthof(dictionary);             \
-    createDictionary(size, dictionary);             \
-})
-
-#define dictDeepCopy(...) ({                        \
-    char *dictionary[][2] = __VA_ARGS__;            \
-    size_t size = lengthof(dictionary);             \
-    char *copied_dictionary[size][2];               \
-    for(size_t i = 0; i < size; i++) {              \
-        copied_dictionary[i][0] = dictionary[i][0]; \
-        copied_dictionary[i][1] = dictionary[i][1]; \
-    }                                               \
-    createDictionary(size, copied_dictionary);      \
-})
-
 
 char * strdup(const char * s) {
   	size_t len = 1 + strlen(s);
@@ -301,8 +241,6 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
     return result;
 }
 
-#include <stdint.h>
-
 char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
     // Calculate the difference in length for all replacements
 	dbg("the received string is %s", input_string);
@@ -331,7 +269,7 @@ char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
     dbg("max_increase: %ld, max_decrease: %ld, len_diff %ld", max_increase, max_decrease, len_diff);
 
     // Reallocate memory for the modified string with extra space for null terminator
-    size_t new_len = strlen(input_string) + max_increase + 1;
+    size_t new_len = strlen(input_string) + max_increase;
 	dbg("the new length is %ld, the old was %ld\n", new_len, strlen(input_string));
     input_string = realloc(input_string, new_len);
     if (input_string == NULL) {
@@ -365,12 +303,6 @@ substring_t substring(char *start, char *end) {
         start, end
     };
 }
-
-#define substring(start, end) \
-    ({ \
-        assert((start) != NULL && (end) != NULL); \
-        substring(start, end); \
-    })
 
 int asprintf (char **str, const char *fmt, ...) {
   int size = 0;
@@ -536,115 +468,3 @@ int printh(char *fmt, __attribute_maybe_unused__ dictionary_t dictionary) {
 	free(output);
 	return output_length;
 }
-
-#define PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-        _Pragma("GCC diagnostic ignored \"-Wpragmas\"");                \
-        _Pragma("GCC diagnostic ignored \"-Wunknown-warning-option\""); \
-    	_Pragma("GCC diagnostic ignored \"-Wformat=\""); 	            \
-        _Pragma("GCC diagnostic ignored \"-Wformat\""); 	            \
-        _Pragma("GCC diagnostic ignored \"-Wunused-variable\"");        \
-
-
-#define _generic_format(ptr, x)                                         \
-	_Generic((x),                                                       \
-		char: asprintf(ptr, "%c", x),                                   \
-	    unsigned char: asprintf(ptr, "%u", x),                          \
-	    short: asprintf(ptr, "%hd", x),                                 \
-	    unsigned short: asprintf(ptr, "%hu", x),                        \
-	    int: asprintf(ptr, "%d", x),                                    \
-	    unsigned int: asprintf(ptr, "%u", x),                           \
-	    long: asprintf(ptr, "%ld", x),                                  \
-	    unsigned long: asprintf(ptr, "%lu", x),                         \
-	    long long: asprintf(ptr, "%lld", x),                            \
-	    unsigned long long: asprintf(ptr, "%llu", x),                   \
-	    float: asprintf(ptr, "%f", x),                                  \
-	    double: asprintf(ptr, "%lf", x),                                \
-	    long double: asprintf(ptr, "%Lf", x),                           \
-	    char *: asprintf(ptr, "%s", x),                                 \
-	    default: (NULL)                                                 \
-	)	
-
-#define createReplacementPair(in) 							            \
-	({ 														            \
-		_Pragma("GCC diagnostic push"); 					            \
-        PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-		char *temp; 										            \
-		typeof(in) _in = in; 									        \
-		_generic_format(&temp, _in);     					            \
-		_Pragma("GCC diagnostic pop");						            \
-		replacement_pair ret = (replacement_pair) { 		            \
-			.key = getIdentifier(#in),						            \
-			.value = temp									            \
-		};													            \
-		ret; }),
-
-#define _createKey(in)                                                  \
-    ({                                                                  \
-        getIdentifier(#in);                                             \
-    })
-	
-
-#define _createValue(in)                                                \
-    ({                                                                  \
-        char *temp;      										        \
-	    typeof(in) _in = in;     								        \
-	    _generic_format(&temp, _in);         					        \
-        temp;                                                           \
-    })	
-
-#define _createKeyValuePairs(in)                                        \
-    { _createKey(in), _createValue(in) },
-
-
-#define format(fmt, ...)                                                \
-    ({                                                                  \
-        _Pragma("GCC diagnostic push"); 					            \
-        PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-        auto tmp = convertKeysToTags(                                   \
-	        dict({ MAP(_createKeyValuePairs, __VA_ARGS__) })); 			\
-        char *ret = format(fmt, tmp);									\
-        _Pragma("GCC diagnostic pop");			    			        \
-        destroyDictionary(tmp);											\
-        ret;                                                            \
-    })
-
-// the dictionary created here is temporary and should be freed here too
-#define printh(fmt, ...)   										        \
-    ({                                                                  \
-        _Pragma("GCC diagnostic push"); 					            \
-        PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
-        auto tmp = convertKeysToTags(									\
-        	dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }));			\
-        int ret = printh(fmt, tmp); 									\
-        _Pragma("GCC diagnostic pop");			    			        \
-        destroyDictionary(tmp);											\
-        ret;                                                            \
-    })
-
-#if 0
-
-int main() { 
-    auto str = "test a eee a";
-    auto dt = dict({{"eee", "fff"}, {"a", "b"}});
-    dictionary_index_search_t ind = sequenceMatchesDictionaryKey(str, 5, dt);
-    dbg("success %s, index %ld", ind.success ? "true" : "false", ind.index);
-}
-#else
-int main() {
-
-/*	char *str = "test {var}, hihi";
-	str = strdup(str);
-	str = replaceSubstrings_new(str, dict({{"{var}", "abc123456789"}}));
-	puts(str);
-	exit(EXIT_SUCCESS);
-*/
-	// printh("the first test string is {} and the second string is {}\n", "foostring", "barstring");
-
-	char *foo, *bar;
-    char *aaaaa;
-	printh("the foo is {foo} and bar is {bar}, the first was {foo}\n", foo = "test1______", bar = "test2");
-	printh("{bar}{bar}{bar}\n", bar = "- - - - - - - |");
-    printh("{aaaaa} e {aaaaa}e", aaaaa = "a");
-	return 0;
-}
-#endif
