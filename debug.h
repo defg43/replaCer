@@ -1,6 +1,7 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
+#include <stdlib.h>
 #include "map.h"
 
 #ifndef lengthof
@@ -9,7 +10,11 @@
 
 
 #ifdef DEBUG
-#define free(x) ({dbg("freeing variable %s with the value %p", #x, x); free(x);})
+#define free(x) \
+	({ \
+		dbg("freeing variable %s with the value %p", #x, x); \
+		free(x); \
+	})
 #define dbg(fmt, ...) \
     ({  \
         printf("[\e[93mdebug\e[0m: %s @ %d in %s from %s] " fmt "\n", \
@@ -148,29 +153,6 @@
 #define dbgstr(strin, ...)
 #endif
 
-#if 0// defined(__GNUC__)
-#define __USE_GNU
-#include <dlfcn.h>
-#include <stddef.h>
-#include <execinfo.h>
-const char *getCaller(void) {
-    void *callstack[3];
-    const int maxFrames = sizeof(callstack) / sizeof(callstack[0]);
-    Dl_info info;
+const char *getCaller(void);
 
-    backtrace(callstack, maxFrames);
-
-    if (dladdr(callstack[2], &info) && info.dli_sname != NULL) {
-        // printf("I was called from: %s\n", info.dli_sname);
-        return info.dli_sname;
-    } else {
-        // printf("Unable to determine calling function\n");
-        return "<?>";
-    }
-}
-#else
-const char *getCaller(void) {
-	return "<unimplemented>";
-}
-#endif // __GNUC__
 #endif // DEBUG_H

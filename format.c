@@ -1,6 +1,6 @@
-// #define DEBUG
-#include "debug.h"
+#define DEBUG
 #include "format.h"
+#include "debug.h"
 
 #undef substring
 #undef printh
@@ -233,6 +233,8 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
 
         // Check if there are enough characters remaining in str to compare with the key
         if (index + key_len <= strlen(str) && strncmp(str + index, dictionary.key[i], key_len) == 0) {
+			dbg("str is %p, the string is %s", str, str);
+			dbgstr(str, 0);
             result.success = true;
             result.index = i;
             return result;
@@ -269,7 +271,7 @@ char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
     dbg("max_increase: %ld, max_decrease: %ld, len_diff %ld", max_increase, max_decrease, len_diff);
 
     // Reallocate memory for the modified string with extra space for null terminator
-    size_t new_len = strlen(input_string) + max_increase;
+    size_t new_len = strlen(input_string) + max_increase + 1;
 	dbg("the new length is %ld, the old was %ld\n", new_len, strlen(input_string));
     input_string = realloc(input_string, new_len);
     if (input_string == NULL) {
@@ -285,17 +287,23 @@ char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
 			//get length to push back
 			size_t pushback_len = strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
             dbg("the pushback_len is: %ld", pushback_len);
-            dbgstr(input_string, iter, iter + pushback_len);
+            dbgstr(input_string, iter, iter + strlen(dictionary.key[search.index]) + pushback_len,
+            input_string + iter + strlen(dictionary.key[search.index]), 
+            	iter + strlen(dictionary.key[search.index]) 
+            	+ curstrlen - iter - strlen(dictionary.key[search.index]));
+
 			memmove(input_string + iter + strlen(dictionary.key[search.index]) + pushback_len, 
-                input_string + iter + strlen(dictionary.key[search.index]), curstrlen - iter);
+                input_string + iter + strlen(dictionary.key[search.index]), 
+                curstrlen - iter - strlen(dictionary.key[search.index]));
             // input_string[iter + pushback_len] = '\0';
+//          curstrlen = strlen(input_string);
 			curstrlen += strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
 			strncpy(input_string + iter, dictionary.value[search.index], strlen(dictionary.value[search.index]));
             iter += strlen(dictionary.value[search.index]) - 1;
   		}
 		iter++;
 	}
-    return realloc(input_string, strlen(input_string));
+    return realloc(input_string, strlen(input_string) + 1);
 }
 
 substring_t substring(char *start, char *end) {
@@ -405,13 +413,19 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
 				dbg("dictionary index: %ld\n", dictionary_index);
 				size_t val_len = strlen(dictionary.value[dictionary_index - 1]);
 				size_t new_length = len + val_len;
-				buf = realloc(buf, new_length);
-				assert(buf);
-				// :(
-				memmove(buf + index + val_len - 2, buf + index, len - index);
-				strncpy(buf + index, dictionary.value[dictionary_index - 1], 
-					strlen(dictionary.value[dictionary_index - 1]));
-				len = strlen(buf);
+				if(val_len > 2) {
+					buf = realloc(buf, new_length);
+				}
+				// 								the + 1 copies the null terminator
+				memmove(buf + index + val_len, buf + index + 2, len - index - 2 + 1);
+				if(val_len < 2) {
+					buf = realloc(buf, new_length);
+				}
+				len += val_len - 2;
+				if(val_len != 0) {
+					strncpy(buf + index, dictionary.value[dictionary_index - 1], 
+						strlen(dictionary.value[dictionary_index - 1]));
+				} 
 				dbg("->%s\n", buf);
 			} else {
 				dbg("entering number construction segment");
@@ -456,8 +470,8 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
                                                                                           
 char *format(char *buf, dictionary_t dictionary) {
     char *output;
-	// output = positionalInsert(buf, dictionary);
-   	output = replaceSubstrings(buf, dictionary);
+	output = positionalInsert(buf, dictionary);
+   	output = replaceSubstrings(output, dictionary);
     return output;
 }
 
