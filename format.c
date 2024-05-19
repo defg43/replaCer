@@ -1,4 +1,4 @@
-#define DEBUG
+// #define DEBUG
 #include "format.h"
 #include "debug.h"
 
@@ -222,10 +222,12 @@ size_t countSubstring(const char *str, const char *sub) {
 
 	return count;
 }
+
 dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, dictionary_t dictionary) {
     dictionary_index_search_t result;
     result.success = false;
     result.index = 0;
+    dbgmem(str);
 
     // Iterate through the dictionary keys to find a match
     for (size_t i = 0; i < dictionary.entry_count; i++) {
@@ -234,7 +236,8 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
         // Check if there are enough characters remaining in str to compare with the key
         if (index + key_len <= strlen(str) && strncmp(str + index, dictionary.key[i], key_len) == 0) {
 			dbg("str is %p, the string is %s", str, str);
-			dbgstr(str, 0);
+			dbg("str is %p, the string is %s", str, str);
+			dbg("hello?");
             result.success = true;
             result.index = i;
             return result;
@@ -245,7 +248,8 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
 
 char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
     // Calculate the difference in length for all replacements
-	dbg("the received string is %s", input_string);
+	dbg("the received string is %s, strlen is %ld, usable memory %ld", 
+	input_string, strlen(input_string), malloc_usable_size(input_string));
 	size_t curstrlen = strlen(input_string);
     int64_t max_increase = 0;
     int64_t max_decrease = 0;
@@ -274,29 +278,37 @@ char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
     size_t new_len = strlen(input_string) + max_increase + 1;
 	dbg("the new length is %ld, the old was %ld\n", new_len, strlen(input_string));
     input_string = realloc(input_string, new_len);
+	dbg("after realloc the new length is %ld, the old was %ld\n", new_len, strlen(input_string));    
+    // input_string[new_len] = 0;
+    dbgstr(input_string, new_len);
+    dbgmem(input_string);
     if (input_string == NULL) {
         fprintf(stderr, "realloc in replaceSubstrings failed\n");
         exit(EXIT_FAILURE);
     }
-
+    
 	size_t iter = 0;
 	while(input_string[iter]) {
+		dbgmem(input_string);
 		dictionary_index_search_t search = sequenceMatchesDictionaryKey(input_string, iter, dictionary);
         dbgstr(input_string, iter);
 		if(search.success) {
-			//get length to push back
-			size_t pushback_len = strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
+			
+			size_t pushback_len = strlen(dictionary.value[search.index]) 
+				- strlen(dictionary.key[search.index]);
             dbg("the pushback_len is: %ld", pushback_len);
+
             dbgstr(input_string, iter, iter + strlen(dictionary.key[search.index]) + pushback_len,
             input_string + iter + strlen(dictionary.key[search.index]), 
             	iter + strlen(dictionary.key[search.index]) 
-            	+ curstrlen - iter - strlen(dictionary.key[search.index]));
+            	+ curstrlen - iter - strlen(dictionary.key[search.index]) + 1);
 
 			memmove(input_string + iter + strlen(dictionary.key[search.index]) + pushback_len, 
                 input_string + iter + strlen(dictionary.key[search.index]), 
-                curstrlen - iter - strlen(dictionary.key[search.index]));
+                curstrlen - iter - strlen(dictionary.key[search.index]) + 1);
+                
             // input_string[iter + pushback_len] = '\0';
-//          curstrlen = strlen(input_string);
+			// curstrlen = strlen(input_string);
 			curstrlen += strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
 			strncpy(input_string + iter, dictionary.value[search.index], strlen(dictionary.value[search.index]));
             iter += strlen(dictionary.value[search.index]) - 1;
@@ -412,7 +424,7 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
 				dictionary_index++; // todo insert value from index
 				dbg("dictionary index: %ld\n", dictionary_index);
 				size_t val_len = strlen(dictionary.value[dictionary_index - 1]);
-				size_t new_length = len + val_len;
+				size_t new_length = len + val_len + 1; // null terminator :)
 				if(val_len > 2) {
 					buf = realloc(buf, new_length);
 				}
@@ -471,7 +483,7 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
 char *format(char *buf, dictionary_t dictionary) {
     char *output;
 	output = positionalInsert(buf, dictionary);
-   	output = replaceSubstrings(output, dictionary);
+	output = replaceSubstrings(output, dictionary);
     return output;
 }
 

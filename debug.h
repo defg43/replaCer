@@ -2,6 +2,7 @@
 #define DEBUG_H
 
 #include <stdlib.h>
+#include <malloc.h>
 #include "map.h"
 
 #ifndef lengthof
@@ -10,6 +11,10 @@
 
 
 #ifdef DEBUG
+
+void dbgmem(void *ptr);
+size_t strlen_probe(char *str);
+
 #define free(x) \
 	({ \
 		dbg("freeing variable %s with the value %p", #x, x); \
@@ -22,6 +27,7 @@
     })
 #else
 #define dbg(fmt, ...)
+#define dbgmem(ptr) 
 #endif
 
 #ifdef DEBUG
@@ -58,7 +64,8 @@
 		char *str = strin; 															\
 		size_t idx[] = { MAP(_dbgstr_convert_ptr_to_diff, __VA_ARGS__) };			\
 		const char *varname[] = { MAP(_stringify_comma, __VA_ARGS__) };				\
-        size_t len = strlen(str); 													\
+        size_t len = malloc_usable_size(str); 										\
+        size_t usable_size = malloc_usable_size(str);								\
         size_t index = 0;															\
         size_t arrow_index = 0;														\
         size_t arrow_pos[lengthof(idx)];											\
@@ -89,7 +96,7 @@
 			}																		\
 		}																			\
        																				\
-       	while(str[index]) {															\
+       	while(index < usable_size) {									\
         	if(_compareWithAnyofArray(index, idx)) {								\
         		if(str[index] == ' ') {												\
         			printf("\e[43m");												\
@@ -104,6 +111,7 @@
 			else if(str[index] == '\e') { printf("\\e"); }							\
 			else if(str[index] == '\\') { printf("\\"); }							\
 			else if(str[index] == '\0') { printf("\\0"); }							\
+			else if(str[index] >= 128) { printf("??"); } 							\
 			else { printf("%c", str[index]); }										\
 			if(_compareWithAnyofArray(index, idx)) {								\
 				printf("\e[0m");													\
