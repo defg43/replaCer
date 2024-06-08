@@ -9,7 +9,6 @@
 #define lengthof(array) (sizeof(array) / sizeof((array)[0]))
 #endif
 
-
 #ifdef DEBUG
 
 void dbgmem(void *ptr);

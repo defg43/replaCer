@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <malloc.h>
 #include <stdint.h>
+#include <ctype.h>
 #include "map.h"
 #include "debug.h"
 #include <stdlib.h>
@@ -35,7 +36,10 @@ int printh(char *fmt, dictionary_t dictionary); // better name ?
 char *format(char *fmt, dictionary_t dictionary);
 char *surroundWithBraces(char *text);
 char *replaceSubstrings(char *inputString, dictionary_t dictionary);
+substring_t substringTrimWhitespace(substring_t substr);
+char *substringStrchr(substring_t substr, char c);
 char *strdup(const char *s);
+char *strdupSubstring(substring_t substr);
 substring_t substring(char *start, char *end);
 char *stringAfter(char *in, size_t index);
 void printSubstring(substring_t substr);
@@ -151,7 +155,7 @@ void printDictionary(dictionary_t dictionary);
         _Pragma("GCC diagnostic push"); 					            \
         PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
         auto tmp = convertKeysToTags(									\
-        	dict({ MAP(_createKeyValuePairs, __VA_ARGS__) }));			\
+        	dict({ __VA_OPT__(MAP(_createKeyValuePairs, __VA_ARGS__)) }));			\
         int ret = printh(fmt, tmp); 									\
         _Pragma("GCC diagnostic pop");			    			        \
         destroyDictionary(tmp);											\

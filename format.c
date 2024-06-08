@@ -1,4 +1,4 @@
-// #define DEBUG
+#define DEBUG
 #include "format.h"
 #include "debug.h"
 
@@ -34,9 +34,64 @@ void printDictionary(dictionary_t dictionary) {
     }
 }
 
+char *substringStrchr(substring_t substr, char c) {
+    if (substr.start == NULL || substr.end == NULL || substr.start >= substr.end) {
+        return NULL; // Handle invalid input
+    }
+
+    for (char *ptr = substr.start; ptr < substr.end; ++ptr) {
+        if (*ptr == c) {
+            return ptr;
+        }
+    }
+
+    return NULL; // Character not found
+}
+
+substring_t substringTrimWhitespace(substring_t substr) {
+    if (substr.start == NULL || substr.end == NULL || substr.start >= substr.end) {
+        return (substring_t){ substr.start, substr.end }; // Handle invalid input
+    }
+
+    // Trim leading whitespace
+    char *start = substr.start;
+    while (start && start < substr.end && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    // Trim trailing whitespace
+    char *end = substr.end - 1;
+    while (end && end >= start && isspace((unsigned char)*end)) {
+        end--;
+    }
+
+    dbg("substringTrimWhitespace: ");
+    printSubstring((substring_t){ start, end });
+
+    return (substring_t){
+        start, end
+    };
+}         
+
+char *strdupSubstring(substring_t substr) {
+    if (substr.start == NULL || substr.end == NULL || substr.start >= substr.end) {
+        return NULL; // Handle invalid input
+    }
+    size_t len = substr.end - substr.start + 1;
+    char *dup = malloc(len + 1);
+    if (dup == NULL) {
+        return NULL;
+    }
+    memcpy(dup, substr.start, len);
+    dup[len] = '\0';
+    dbg("strdupSubstring: %s", dup);
+    return dup;
+}
+
 void printSubstring(substring_t substr) {
     if(substr.start == NULL) {
         printf("<start pointer null>");
+        return;
     } else {
         char *ptr = substr.start;
         while(ptr != substr.end || *ptr == '\0') {
@@ -227,8 +282,7 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
     dictionary_index_search_t result;
     result.success = false;
     result.index = 0;
-    dbgmem(str);
-
+    
     // Iterate through the dictionary keys to find a match
     for (size_t i = 0; i < dictionary.entry_count; i++) {
         size_t key_len = strlen(dictionary.key[i]);
