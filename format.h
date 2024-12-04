@@ -13,6 +13,7 @@
 #include <ctype.h>
 #include "map.h"
 #include "debug.h"
+#include "ion/include/ion.h"
 #include <stdlib.h>
 
 typedef struct {
@@ -30,6 +31,8 @@ typedef struct {
 	bool success;
 	size_t index;
 } dictionary_index_search_t;
+
+
 
 // string functions prototypes
 int printh(char *fmt, dictionary_t dictionary); // better name ?

@@ -19,25 +19,53 @@ registering a new type with a template string:
 #define DEBUG
 #include "debug.h"
 #include "format.h"
+#include "ion/include/ion.h"
 
-typedef typeof(size_t(*)(char *)) subparser_t;
+struct parsing_rules_t;
 
-typedef struct {
-    char *type_name;
+typedef typeof(obj_t_value_t(*)(string, struct parsing_rules_t)) parser_func_t;
+
+typedef struct parsing_rule_t {
+    string type_name;
     bool parser_is_template;
     union {
-        char *template_string;
-        subparser_t parser_function;
+        string template_string;
+        parser_func_t parser_function;
     };
         
-} parserRegistryEntry;
+} parsing_rule_t;
 
-typedef struct {
-    parserRegistryEntry *entries;
+typedef struct parsing_rules_t {
+    parsing_rule_t *entries;
     size_t count;
-} parserRegistry_t;
+} parsing_rules_t;
 
-bool addParserTemplate(parserRegistry_t *registry, char *type_name, char *template_string);
+bool addParserTemplate(parsing_rules_t *rules, string type_name, string template_string);
+bool addParserFromDefinition(parsing_rules_t *rules, string defition);
+
+obj_t_value_t parseFromTemplate(string input, string template);
+
+obj_t_value_t parseFromTemplate(string input, string template) {
+	if (stringlen(input) == 0) {
+		goto error;
+	}
+	// we assume the template to be a series of at least one parsers
+	string parsing_type = {};
+	string name = {};
+	
+	bool has_ident = false;
+	bool type_variant = false;
+	bool optional = false;
+	bool array_type = false;
+	bool literal= false;
+
+	error:
+		return (obj_t_value_t) {  };
+}
+
+
+
+object_t scanh(string fmt); // this assumes a default parsing rules
 
 bool addParserFromDefinition(parserRegistry_t *registry, char *definition) {
     // split the type name from the definition of the subparser

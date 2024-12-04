@@ -1,3 +1,6 @@
 [submodule "str"]
 	path = str
 	url = git@github.com:defg43/str.git
+[submodule "ion"]
+	path = ion
+	url = git@github.com:defg43/ion.git
