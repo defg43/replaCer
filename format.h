@@ -32,8 +32,6 @@ typedef struct {
 	size_t index;
 } dictionary_index_search_t;
 
-
-
 // string functions prototypes
 int printh(char *fmt, dictionary_t dictionary); // better name ?
 char *format(char *fmt, dictionary_t dictionary);

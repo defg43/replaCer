@@ -20,6 +20,7 @@ registering a new type with a template string:
 #include "debug.h"
 #include "format.h"
 #include "ion/include/ion.h"
+#include "ion/witc/foreach.h"
 
 struct parsing_rules_t;
 
@@ -57,15 +58,32 @@ obj_t_value_t parseFromTemplate(string input, string template) {
 	bool type_variant = false;
 	bool optional = false;
 	bool array_type = false;
-	bool literal= false;
+	bool literal = false;
+	
+	iterstring_t inp = {
+		.previous = 0,
+		.index = 0,
+		.str = input,	
+	};
+
+	array(string) subtokens = tokenizeString(template.at, " ");
+
+	while(subtokens.count > 0) {
+		string subtoken = pop(subtokens);
+		// ...
+        printf("%s\n", subtoken);
+		destroyString(subtoken);
+	}
+
 
 	error:
 		return (obj_t_value_t) {  };
 }
 
-
-
 object_t scanh(string fmt); // this assumes a default parsing rules
+
+
+#if 0
 
 bool addParserFromDefinition(parserRegistry_t *registry, char *definition) {
     // split the type name from the definition of the subparser
@@ -137,16 +155,36 @@ bool addParserFunction(parserRegistry_t *registry, char *type_name, subparser_t 
 
     return true;
 }
+#endif // 0
 
-size_t parse(char *in, char *template) {
+size_t parse(char *input, char *template) {
 
 }
 
 int main() {
     dbg("test\n");
+
+    string input = string(" 1 2 3");
+    string template = string(" {int} {int} {int}");
+
+    parseFromTemplate(input, input);
+
+    destroyString(input);
+    destroyString(template);
+
+
+    array(string) tokens = tokenizeString("hello world, this is a test", " ");
+    
+    foreach(string token of tokens.count sized tokens.element) {
+        printf("%s\n", token);
+        destroyString(token);
+    }
+
+    /*
     parserRegistry_t registry = { 
         .entries = NULL, 
         .count = 0 
     };
     addParserFromDefinition(&registry, "my_type -> {int}{':'}{int}");
+    */
 }
