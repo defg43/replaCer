@@ -17,10 +17,11 @@ registering a new type with a template string:
 #include <stdio.h>
 #include <stddef.h>
 #define DEBUG
-#include "debug.h"
 #include "format.h"
+#include "str/include/str.h"
 #include "ion/include/ion.h"
 #include "ion/witc/foreach.h"
+#include "debug.h"
 
 struct parsing_rules_t;
 
@@ -60,26 +61,20 @@ obj_t_value_t parseFromTemplate(string input, string template) {
 	bool array_type = false;
 	bool literal = false;
 	
+    /*
 	iterstring_t inp = {
 		.previous = 0,
 		.index = 0,
 		.str = input,	
 	};
-
-	array(string) subtokens = tokenizeString(template.at, " ");
-
-    foreach(string subtoken of subtokens.count sized subtokens.element) {
-        printf("%s\n", subtoken);
+    */
+	
+    array(string) subtokens = tokenizeString(template.at, " ");
+    
+    foreach(string subtoken of subtokens) {
+        printf("the subtoken is %s\n", subtoken);
         destroyString(subtoken);
     }
-
-	while(subtokens.count > 0) {
-		string subtoken = pop(subtokens);
-		// ...
-        printf("%s\n", subtoken);
-		destroyString(subtoken);
-	}
-
 
 	error:
 		return (obj_t_value_t) {  };
@@ -166,20 +161,15 @@ size_t parse(char *input, char *template) {
 
 }
 
+
+
 int main() {
     dbg("test\n");
 
-    string input = string(" 1 2 3");
-    string template = string(" {int} {int} {int}");
-
-    parseFromTemplate(input, input);
-
-    destroyString(input);
-    destroyString(template);
-
-
-    array(string) tokens = tokenizeString("hello world, this is a test", " ");
+    array(string) tokens = tokenizePairwiseString("{abc} {def} {ghi}", "{", "}");
     
+    printf("the length is %ld\n", tokens.count);
+
     foreach(string token of tokens.count sized tokens.element) {
         printf("%s\n", token);
         destroyString(token);
