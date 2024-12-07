@@ -68,6 +68,11 @@ obj_t_value_t parseFromTemplate(string input, string template) {
 
 	array(string) subtokens = tokenizeString(template.at, " ");
 
+    foreach(string subtoken of subtokens.count sized subtokens.element) {
+        printf("%s\n", subtoken);
+        destroyString(subtoken);
+    }
+
 	while(subtokens.count > 0) {
 		string subtoken = pop(subtokens);
 		// ...
