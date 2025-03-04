@@ -42,6 +42,74 @@ typedef struct parsing_rules_t {
     size_t count;
 } parsing_rules_t;
 
+typedef struct {
+    bool literal_type;
+    string output_name;
+    bool array_type;
+    bool optional_type;
+    union {
+        string literal;
+        string rule_name;
+    };
+} basic_rule_t;
+
+typedef struct {
+    array(basic_rule_t) alternatives;
+} atomic_rule_t;
+
+typedef struct {
+    string rule_name;
+    array(atomic_rule_t) sequence;
+} rule_t;
+
+bool parseRuleStringLiteral(iterstring_t *iter) {
+    if(iter->str.at[iter->index] != '\'') {
+        iterstringReset(iter);
+        return false;
+    }
+    for(size_t i = iter->index; i < stringlen(iter->str); iter->index++) {
+        switch (iter->str.at[iter->index]) {
+        case 0: // shouldnt happen
+            iterstringReset(iter);
+            return false; 
+        case '\'': // the end of the string literal
+            iter->index++; // move on beyond the closing quote
+            iterstringAdvance(iter);
+            return true;
+        case '\\': // escape character
+            iter->index++;
+        default:
+            break;
+        }
+    }
+}
+
+rule_t createRule(string rule) {
+    array(string) part = tokenizeString(rule.at, "->");
+    if(part.count != 2) {
+        return (rule_t) {
+            .rule_name = {},
+            .sequence = {},
+        };
+    }
+
+    array(string) atomic_rules = tokenizePairwiseString(part.element[1].at, "{", "}");
+    foreach(string atomic_rule of atomic_rules) {
+        iterstring_t iter = { .str = atomic_rule, .previous = 0, .index = 0 };
+        // we attempt to read a string literal, if one is found : cannot follow
+        if(parseRuleStringLiteral(&iter)) {
+            // trim whitespace
+            
+            // we found a string literal, we cannot have : now
+            // check if we have ?
+            // check if we have []
+            // if we have | the add the previous rule to the array and parse a new rule
+        }
+    }
+
+    rule_t ret = { .rule_name = part.element[0] };
+}
+
 bool addParserTemplate(parsing_rules_t *rules, string type_name, string template_string);
 bool addParserFromDefinition(parsing_rules_t *rules, string defition);
 
@@ -61,20 +129,29 @@ obj_t_value_t parseFromTemplate(string input, string template) {
 	bool array_type = false;
 	bool literal = false;
 	
-    /*
 	iterstring_t inp = {
 		.previous = 0,
 		.index = 0,
 		.str = input,	
 	};
-    */
+
+    string target_variable = string("test");
 	
-    array(string) subtokens = tokenizeString(template.at, " ");
+    array(string) subtokens = tokenizePairwiseString(template.at, "{", "}");
+  
+    // iterate over each subtoken and parse it for literals and types
     
     foreach(string subtoken of subtokens) {
-        printf("the subtoken is %s\n", subtoken);
-        destroyString(subtoken);
+        for(size_t i = 0; i < stringlen(subtoken); i++) {
+            switch(subtoken.at[i]) {
+                case '\'': // start of string literal
+                case ':':
+            }
+        }
     }
+
+
+    free(subtokens.element);
 
 	error:
 		return (obj_t_value_t) {  };
@@ -161,19 +238,26 @@ size_t parse(char *input, char *template) {
 
 }
 
+bool test() {
+    return 0;
+}
 
+string stringTrimWhitespace(string);
 
 int main() {
     dbg("test\n");
 
-    array(string) tokens = tokenizePairwiseString("{abc} {def} {ghi}", "{", "}");
-    
-    printf("the length is %ld\n", tokens.count);
+    string template = string("{'a'}{'b'}{'c'}");
+    string input = string("abc");
 
-    foreach(string token of tokens.count sized tokens.element) {
-        printf("%s\n", token);
-        destroyString(token);
-    }
+    parseFromTemplate(template, template);
+
+    destroyString(template);
+    destroyString(input);
+
+    string temp = stringTrimWhitespace(string("   a   "));
+    printf("%s\n", temp);
+    destroyString(temp);
 
     /*
     parserRegistry_t registry = { 
