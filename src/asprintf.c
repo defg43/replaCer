@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "asprintf.h"
+#include "../include/asprintf.h"
 
 int
 asprintf (char **str, const char *fmt, ...) {

@@ -1,6 +1,6 @@
 // #define DEBUG
-#include "format.h"
-#include "debug.h"
+#include "../include/format.h"
+#include "../pesticide/include/debug.h"
 
 #undef substring
 #undef printh

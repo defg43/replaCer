@@ -4,3 +4,6 @@
 [submodule "ion"]
 	path = ion
 	url = git@github.com:defg43/ion.git
+[submodule "pesticide"]
+	path = pesticide
+	url = git@github.com:defg43/pesticide.git

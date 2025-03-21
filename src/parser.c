@@ -17,11 +17,11 @@ registering a new type with a template string:
 #include <stdio.h>
 #include <stddef.h>
 #define DEBUG
-#include "format.h"
-#include "str/include/str.h"
-#include "ion/include/ion.h"
-#include "ion/witc/foreach.h"
-#include "debug.h"
+#include "../include/format.h"
+#include "../ion/str/include/str.h"
+#include "../ion/include/ion.h"
+#include "../ion/witc/foreach.h"
+#include "../pesticide/include/debug.h"
 
 struct parsing_rules_t;
 
@@ -168,9 +168,11 @@ int main() {
 
     array(string) tokens = tokenizePairwiseString("{abc} {def} {ghi}", "{", "}");
     
+    // array(string) tokens = tokenize("a, b, c, d, e, f", ",");
+
     printf("the length is %ld\n", tokens.count);
 
-    foreach(string token of tokens.count sized tokens.element) {
+    foreach(string token of tokens) {
         printf("%s\n", token);
         destroyString(token);
     }

@@ -12,8 +12,8 @@
 #include <stdint.h>
 #include <ctype.h>
 #include "map.h"
-#include "debug.h"
-#include "ion/include/ion.h"
+#include "../pesticide/include/debug.h"
+#include "../ion/include/ion.h"
 #include <stdlib.h>
 
 typedef struct {
@@ -56,7 +56,6 @@ dictionary_t createDictionary(size_t count, char *data[count][2]);
 void destroyDictionary(dictionary_t to_destroy);
 dictionary_t convertKeysToTags(dictionary_t dictionary);
 void printDictionary(dictionary_t dictionary);
-
 
 #define PLEASE_GCC_AND_CLANG_STOP_FIGTHING_OVER_PRAGMAS                 \
         _Pragma("GCC diagnostic ignored \"-Wpragmas\"");                \
@@ -104,21 +103,21 @@ void printDictionary(dictionary_t dictionary);
 		};													            \
 		ret; }),
 
-#define dict(...) ({                                \
-    char *dictionary[][2] = __VA_ARGS__;            \
-    size_t size = lengthof(dictionary);             \
-    createDictionary(size, dictionary);             \
+#define dict(...) ({                                					\
+    char *dictionary[][2] = __VA_ARGS__;            					\
+    size_t size = lengthof(dictionary);             					\
+    createDictionary(size, dictionary);             					\
 })
 
-#define dictDeepCopy(...) ({                        \
-    char *dictionary[][2] = __VA_ARGS__;            \
-    size_t size = lengthof(dictionary);             \
-    char *copied_dictionary[size][2];               \
-    for(size_t i = 0; i < size; i++) {              \
-        copied_dictionary[i][0] = dictionary[i][0]; \
-        copied_dictionary[i][1] = dictionary[i][1]; \
-    }                                               \
-    createDictionary(size, copied_dictionary);      \
+#define dictDeepCopy(...) ({                        					\
+    char *dictionary[][2] = __VA_ARGS__;            					\
+    size_t size = lengthof(dictionary);             					\
+    char *copied_dictionary[size][2];               					\
+    for(size_t i = 0; i < size; i++) {              					\
+        copied_dictionary[i][0] = dictionary[i][0]; 					\
+        copied_dictionary[i][1] = dictionary[i][1]; 					\
+    }                                               					\
+    createDictionary(size, copied_dictionary);      					\
 })
 
 #define _createKey(in)                                                  \
