@@ -7,3 +7,6 @@
 [submodule "pesticide"]
 	path = pesticide
 	url = git@github.com:defg43/pesticide.git
+[submodule "CSTL"]
+	path = CSTL
+	url = git@github.com:defg43/CSTL.git

@@ -22,6 +22,7 @@ registering a new type with a template string:
 #include "../ion/include/ion.h"
 #include "../ion/witc/foreach.h"
 #include "../pesticide/include/debug.h"
+#include "../CSTL/include/cstl.h"
 
 struct parsing_rules_t;
 
@@ -69,7 +70,7 @@ obj_t_value_t parseFromTemplate(string input, string template) {
 	};
     */
 	
-    array(string) subtokens = tokenizeString(template.at, " ");
+    dynarray(string) subtokens = tokenizeString(template.at, " ");
     
     foreach(string subtoken of subtokens) {
         printf("the subtoken is %s\n", subtoken);
@@ -163,7 +164,7 @@ size_t parse(char *input, char *template) {
 
 
 
-int main() {
+int main__test() {
     dbg("test\n");
 
     array(string) tokens = tokenizePairwiseString("{abc} {def} {ghi}", "{", "}");

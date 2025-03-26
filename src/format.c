@@ -11,9 +11,22 @@ dictionary_t createDictionary(size_t count, char *data[count][2]) {
     dictionary_to_return.key = malloc(count * sizeof(char *));
     dictionary_to_return.value = malloc(count * sizeof(char *));
     dictionary_to_return.entry_count = count;
+    
     for (size_t i = 0; i < count; i++) {
-        dictionary_to_return.key[i] = data[i][0];
-        dictionary_to_return.value[i] = data[i][1];
+        dictionary_to_return.key[i] = data[i][0] ? strdup(data[i][0]) : NULL;
+        dictionary_to_return.value[i] = data[i][1] ? strdup(data[i][1]) : NULL;
+        
+        if ((data[i][0] && !dictionary_to_return.key[i]) || 
+            (data[i][1] && !dictionary_to_return.value[i])) {
+            for (size_t j = 0; j < i; j++) {
+                free(dictionary_to_return.key[j]);
+                free(dictionary_to_return.value[j]);
+            }
+            free(dictionary_to_return.key);
+            free(dictionary_to_return.value);
+            dictionary_to_return.entry_count = 0;
+            return dictionary_to_return;
+        }
     }
     return dictionary_to_return;
 }
@@ -48,18 +61,77 @@ char *substringStrchr(substring_t substr, char c) {
     return NULL; // Character not found
 }
 
+dynarray(string) tokenizeString(char_ptr_conv_t input, char_ptr_conv_t delim) {
+    if(!input.as_char_ptr || !delim.as_char_ptr) {
+        return create_dynarray(string);
+    }
+    size_t input_index = 0, delim_index = 0, marker = 0;
+        bool found = false, delim_matches = true;
+        string token = {};
+        dynarray(string) ret = create_dynarray(string);
+    
+        while (input.as_char_ptr[input_index]) {
+            delim_matches = input.as_char_ptr[input_index] == delim.as_char_ptr[delim_index];
+            found = !delim.as_char_ptr[delim_index];
+            delim_index++;
+            delim_index *= delim_matches;
+    
+            if (found) {
+                token = sliceFromCharPtr(input.as_char_ptr, marker, input_index);
+                dynarray_append(ret, token);
+                marker = input_index; 
+            }
+            input_index++;
+        }
+    
+        if (marker < input_index) {
+            token = sliceFromCharPtr(input.as_char_ptr, marker, input_index);
+            dynarray_append(ret, token);
+        }
+    
+        return ret;
+}
+
+dynarray(string) tokenizePairwiseString(char_ptr_conv_t input, 
+    char_ptr_conv_t start_delim, char_ptr_conv_t end_delim) {
+    if (!input.as_char_ptr || !start_delim.as_char_ptr || !end_delim.as_char_ptr) {
+        return create_dynarray(string);
+    }
+    size_t input_index = 0, start_delimiter_index = 0, end_delimiter_index = 0, token_start = 0;
+    bool start_delimiter_matches = true, end_delimiter_matches = true;
+    string token = {};
+    dynarray(string) ret = create_dynarray(string);
+    while (input.as_char_ptr[input_index]) {
+        start_delimiter_matches = input.as_char_ptr[input_index] == start_delim.as_char_ptr[start_delimiter_index];
+        end_delimiter_matches = input.as_char_ptr[input_index] == end_delim.as_char_ptr[end_delimiter_index];
+        start_delimiter_index += start_delimiter_matches;
+        end_delimiter_index += end_delimiter_matches;
+        if (!start_delim.as_char_ptr[start_delimiter_index] && !end_delim.as_char_ptr[end_delimiter_index]) {
+            token = sliceFromCharPtr(input.as_char_ptr, token_start, input_index);
+            token_start = input_index;
+            dynarray_append(ret, token);
+        }
+        input_index++;
+    }
+
+    if (token_start < input_index) {
+        token = sliceFromCharPtr(input.as_char_ptr, token_start, input_index);
+        dynarray_append(ret, token);
+    }
+    return ret;
+}
+
+
 substring_t substringTrimWhitespace(substring_t substr) {
     if (substr.start == NULL || substr.end == NULL || substr.start >= substr.end) {
         return (substring_t){ substr.start, substr.end }; // Handle invalid input
     }
 
-    // Trim leading whitespace
     char *start = substr.start;
     while (start && start < substr.end && isspace((unsigned char)*start)) {
         start++;
     }
 
-    // Trim trailing whitespace
     char *end = substr.end - 1;
     while (end && end >= start && isspace((unsigned char)*end)) {
         end--;
@@ -68,8 +140,16 @@ substring_t substringTrimWhitespace(substring_t substr) {
     dbg("substringTrimWhitespace: ");
     printSubstring((substring_t){ start, end });
 
+	if(start < end) {
+		return (substring_t) {
+			.start = substr.start, 			
+			.end = substr.start, 
+		};
+	}
+
     return (substring_t){
-        start, end
+        .start = start, 
+        .end = end,
     };
 }         
 
@@ -77,7 +157,7 @@ char *strdupSubstring(substring_t substr) {
     if (substr.start == NULL || substr.end == NULL || substr.start >= substr.end) {
         return NULL; // Handle invalid input
     }
-    size_t len = substr.end - substr.start + 1;
+    size_t len = substr.end - substr.start;
     char *dup = malloc(len + 1);
     if (dup == NULL) {
         return NULL;
@@ -106,7 +186,7 @@ void printSubstring(substring_t substr) {
     }
 }
 
-char * strdup(const char * s) {
+char *strdup(const char * s) {
   	size_t len = 1 + strlen(s);
   	char *p = malloc(len);
 
@@ -158,57 +238,6 @@ dictionary_t convertKeysToTags(dictionary_t dictionary) {
         dictionary.key[index] = surroundWithBraces(dictionary.key[index]);
     }
     return dictionary;
-}
-
-char *replaceSubstrings_old(char *inputString, dictionary_t dictionary) {
-    // Calculate the length of the modified string
-    size_t inputLength = strlen(inputString);
-    size_t outputLength = inputLength;
-
-    for (size_t i = 0; i < dictionary.entry_count; i++) {
-        char *substring = dictionary.key[i];
-        char *replacement = dictionary.value[i];
-
-        // Count occurrences of substring
-        char *pos = inputString;
-        while ((pos = strstr(pos, substring)) != NULL) {
-            outputLength += strlen(replacement) - strlen(substring);
-            pos += strlen(substring);
-        }
-    }
-
-    // Allocate memory for the modified string
-    char *outputString = malloc(outputLength + 1);
-    if (outputString == NULL) {
-        fprintf(stderr, "Memory allocation error\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // Copy and replace substrings
-    size_t currentIndex = 0;
-    for (size_t i = 0; i < inputLength; i++) {
-        int match_found = 0;
-        for (size_t j = 0; j < dictionary.entry_count; j++) {
-            char *substring = dictionary.key[j];
-            char *replacement = dictionary.value[j];
-
-            if (strncmp(inputString + i, substring, strlen(substring)) == 0) {
-                strcpy(outputString + currentIndex, replacement);
-                currentIndex += strlen(replacement);
-                i += strlen(substring) - 1;  // Move the index past the matched substring
-                match_found = 1;
-                break;
-            }
-        }
-
-        if (!match_found) {
-            outputString[currentIndex++] = inputString[i];
-        }
-    }
-
-    outputString[currentIndex] = '\0'; // Null-terminate the output string
-
-    return outputString;
 }
 
 char *replaceSubstrings_new(char *inputString, dictionary_t dictionary) {
@@ -265,16 +294,12 @@ char *replaceSubstrings_new(char *inputString, dictionary_t dictionary) {
 size_t countSubstring(const char *str, const char *sub) {
   size_t count = 0;
   size_t len_sub = strlen(sub);
-	// Iterate through the main string
 	for (size_t i = 0; str[i] != '\0'; i++) {
-    	// Check if substring matches at current position
     	if (strncmp(str + i, sub, len_sub) == 0) {
       		count++;
-      		// Move i to the end of the substring to avoid counting overlaps
       		i += len_sub - 1;
     	}
   	}
-
 	return count;
 }
 
@@ -283,11 +308,9 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
     result.success = false;
     result.index = 0;
     
-    // Iterate through the dictionary keys to find a match
     for (size_t i = 0; i < dictionary.entry_count; i++) {
         size_t key_len = strlen(dictionary.key[i]);
 
-        // Check if there are enough characters remaining in str to compare with the key
         if (index + key_len <= strlen(str) && strncmp(str + index, dictionary.key[i], key_len) == 0) {
 			dbg("str is %p, the string is %s", str, str);
 			dbg("str is %p, the string is %s", str, str);
@@ -301,75 +324,64 @@ dictionary_index_search_t sequenceMatchesDictionaryKey(char *str, size_t index, 
 }
 
 char *replaceSubstrings(char *input_string, dictionary_t dictionary) {
-    // Calculate the difference in length for all replacements
-	dbg("the received string is %s, strlen is %ld, usable memory %ld", 
-	input_string, strlen(input_string), malloc_usable_size(input_string));
-	size_t curstrlen = strlen(input_string);
-    int64_t max_increase = 0;
-    int64_t max_decrease = 0;
-    int64_t diff = 0; // im sure this wont backfire
-    int64_t len_diff = 0;
+    if (!input_string || dictionary.entry_count == 0) {
+        return input_string;
+    }
+
+    size_t input_len = strlen(input_string);
+    size_t output_len = input_len;
+    size_t replacements_count = 0;
+
     for (size_t i = 0; i < dictionary.entry_count; i++) {
-        diff = 
-			countSubstring(input_string, dictionary.key[i]) * strlen(dictionary.value[i]) - 
-			countSubstring(input_string, dictionary.key[i]) * strlen(dictionary.key[i]);
-            dbg("diff: %ld", diff);
-        if(diff > INT64_MAX || diff < INT64_MIN) {
-            fprintf(stderr, "congrats, string difference is so large that it doesnt fit into 64 bit\n");
-            fprintf(stderr, "%s @ %d in %s\n", __FUNCTION__, __LINE__, __FILE__);
-            exit(EXIT_FAILURE);
-        }
-        if(diff < 0) {
-            max_decrease += diff;
-        } else {
-            max_increase += diff;
+        if (!dictionary.key[i] || !dictionary.value[i]) continue;
+
+        const char *pos = input_string;
+        const char *key = dictionary.key[i];
+        const size_t key_len = strlen(key);
+        const size_t val_len = strlen(dictionary.value[i]);
+
+        while ((pos = strstr(pos, key)) != NULL) {
+            output_len += val_len - key_len;
+            replacements_count++;
+            pos += key_len;
         }
     }
-    len_diff = max_increase + max_decrease;
-    dbg("max_increase: %ld, max_decrease: %ld, len_diff %ld", max_increase, max_decrease, len_diff);
 
-    // Reallocate memory for the modified string with extra space for null terminator
-    size_t new_len = strlen(input_string) + max_increase + 1;
-	dbg("the new length is %ld, the old was %ld\n", new_len, strlen(input_string));
-    input_string = realloc(input_string, new_len);
-	dbg("after realloc the new length is %ld, the old was %ld\n", new_len, strlen(input_string));    
-    // input_string[new_len] = 0;
-    dbgstr(input_string, new_len);
-    dbgmem(input_string);
-    if (input_string == NULL) {
-        fprintf(stderr, "realloc in replaceSubstrings failed\n");
-        exit(EXIT_FAILURE);
+    if (replacements_count == 0) {
+        return input_string;
     }
-    
-	size_t iter = 0;
-	while(input_string[iter]) {
-		dbgmem(input_string);
-		dictionary_index_search_t search = sequenceMatchesDictionaryKey(input_string, iter, dictionary);
-        dbgstr(input_string, iter);
-		if(search.success) {
-			
-			size_t pushback_len = strlen(dictionary.value[search.index]) 
-				- strlen(dictionary.key[search.index]);
-            dbg("the pushback_len is: %ld", pushback_len);
 
-            dbgstr(input_string, iter, iter + strlen(dictionary.key[search.index]) + pushback_len,
-            input_string + iter + strlen(dictionary.key[search.index]), 
-            	iter + strlen(dictionary.key[search.index]) 
-            	+ curstrlen - iter - strlen(dictionary.key[search.index]) + 1);
+    char *output = malloc(output_len + 2);
+    if (!output) {
+        return NULL;
+    }
 
-			memmove(input_string + iter + strlen(dictionary.key[search.index]) + pushback_len, 
-                input_string + iter + strlen(dictionary.key[search.index]), 
-                curstrlen - iter - strlen(dictionary.key[search.index]) + 1);
-                
-            // input_string[iter + pushback_len] = '\0';
-			// curstrlen = strlen(input_string);
-			curstrlen += strlen(dictionary.value[search.index]) - strlen(dictionary.key[search.index]);
-			strncpy(input_string + iter, dictionary.value[search.index], strlen(dictionary.value[search.index]));
-            iter += strlen(dictionary.value[search.index]) - 1;
-  		}
-		iter++;
-	}
-    return realloc(input_string, strlen(input_string) + 1);
+    char *out_ptr = output;
+    const char *in_ptr = input_string;
+
+    while (*in_ptr) {
+        bool replaced = false;
+        
+        for (size_t i = 0; i < dictionary.entry_count; i++) {
+            if (!dictionary.key[i]) continue;
+
+            const size_t key_len = strlen(dictionary.key[i]);
+            if (strncmp(in_ptr, dictionary.key[i], key_len) == 0) {
+                const size_t val_len = strlen(dictionary.value[i]);
+                memcpy(out_ptr, dictionary.value[i], val_len);
+                out_ptr += val_len;
+                in_ptr += key_len;
+                replaced = true;
+                break;
+            }
+        }
+
+        if (!replaced) {
+            *out_ptr++ = *in_ptr++;
+        }
+    }
+    *out_ptr = '\0';
+    return output;
 }
 
 substring_t substring(char *start, char *end) {
@@ -536,8 +548,10 @@ char *positionalInsert(char *buf, dictionary_t dictionary) {
                                                                                           
 char *format(char *buf, dictionary_t dictionary) {
     char *output;
-	output = positionalInsert(buf, dictionary);
-	output = replaceSubstrings(output, dictionary);
+    char *temp;
+	temp = positionalInsert(buf, dictionary);
+	output = replaceSubstrings(temp, dictionary);
+    free(temp);
     return output;
 }
 

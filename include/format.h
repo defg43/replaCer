@@ -14,6 +14,7 @@
 #include "map.h"
 #include "../pesticide/include/debug.h"
 #include "../ion/include/ion.h"
+#include "../CSTL/include/cstl.h"
 #include <stdlib.h>
 
 typedef struct {
@@ -31,6 +32,8 @@ typedef struct {
 	bool success;
 	size_t index;
 } dictionary_index_search_t;
+
+typedef union { char *as_char_ptr; string into_char_ptr; } char_ptr_conv_t;
 
 // string functions prototypes
 int printh(char *fmt, dictionary_t dictionary); // better name ?
@@ -50,6 +53,10 @@ char *positionalInsert(char *buf, dictionary_t dictionary);
 
 int vasprintf(char **str, const char *fmt, va_list args);
 int asprintf (char **str, const char *fmt, ...);
+
+dynarray(string) tokenizeString(char_ptr_conv_t input, char_ptr_conv_t delim);
+dynarray(string) tokenizePairwiseString(char_ptr_conv_t input, 
+    char_ptr_conv_t delim_start, char_ptr_conv_t delim_end);
 
 // dictionary functions 
 dictionary_t createDictionary(size_t count, char *data[count][2]);
