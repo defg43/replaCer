@@ -14,6 +14,24 @@ registering a new type with a template string:
 	a definition might thus look like this: my_type -> {int}{':'}{int} // the parsed input is accumulated in a string that represent my_type, an example of this migth look like 2:33
 */
 
+/*
+'literal'
+key:type
+key:type | key2:type2
+key:type?
+key:type[]
+key:type
+
+character -> 'a' | 'b' | 'c' | 'd' | 'e' | 'f'
+
+raw_string -> #character[]
+
+
+function_declartion -> return_type:C_type functionname:C_identifier '(' argument_list:argument[] ')'
+*/
+
+
+
 #include <stdio.h>
 #include <stddef.h>
 #define DEBUG
@@ -23,6 +41,15 @@ registering a new type with a template string:
 #include "../ion/witc/foreach.h"
 #include "../pesticide/include/debug.h"
 #include "../CSTL/include/cstl.h"
+
+typedef struct {
+	option(string) literal;
+	option(string) name;
+	option(string) type;
+	bool is_optional;
+	bool is_array;
+	gramar_rule_t *alternative;
+}  gramar_rule_t;
 
 struct parsing_rules_t;
 
