@@ -66,7 +66,6 @@ typedef struct parsing_rule_t {
         string template_string;
         parser_func_t parser_function;
     };
-        
 } parsing_rule_t;
 
 typedef struct parsing_rules_t {
