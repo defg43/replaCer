@@ -26,8 +26,7 @@ character -> 'a' | 'b' | 'c' | 'd' | 'e' | 'f'
 
 raw_string -> #character[]
 
-
-function_declartion -> return_type:C_type functionname:C_identifier '(' argument_list:argument[] ')'
+function_declartion -> return_type:C_type functionname:C_identifier '(' argument_list:argument[] ')' ';'
 */
 
 
@@ -43,13 +42,18 @@ function_declartion -> return_type:C_type functionname:C_identifier '(' argument
 #include "../CSTL/include/cstl.h"
 
 typedef struct {
-	option(string) literal;
-	option(string) name;
-	option(string) type;
+	union {
+		string literal;
+		struct {
+			string key_name;
+			string grammar_name;
+			grammar_rule_t *grammar;
+		};
+	};
 	bool is_optional;
 	bool is_array;
-	gramar_rule_t *alternative;
-}  gramar_rule_t;
+	grammar_rule_t *alternative;
+}  grammar_rule_t;
 
 struct parsing_rules_t;
 
