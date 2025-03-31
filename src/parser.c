@@ -45,7 +45,7 @@ typedef struct {
 	union {
 		string literal;
 		struct {
-			string key_name;
+			string key_name; 
 			string grammar_name;
 			grammar_rule_t *grammar;
 		};
