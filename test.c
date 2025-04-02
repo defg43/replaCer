@@ -12,7 +12,7 @@ int main() {
     free(result);
 
 
-/*
+    /*
 	printh("the first test string is {} and the second string is {}\n", "foostring", "barstring");
 	char *foo, *bar;
     char *aaaaa;
