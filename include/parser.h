@@ -35,13 +35,13 @@ typedef struct {
 } grammar_t;
 
 option(grammar_t) compilerGrammar(size_t count, string rules[static count]);
-grammar_t *parseRule(iterstring_t rule);
-optional(string) parseLiteral(iterstring_t rule);
-optional(string) parseGrammarKey(iterstring_t rule);
-optional(string) parseGrammarType(iterstring_t rule);
-bool parseWhitespace(iterstring_t rule);
-bool parseSeperator(iterstring_t rule);
-bool isFollowedByAlternative(iterstring_t rule);
+grammar_t *parseRule(iterstring_t *rule);
+optional(string) parseLiteral(iterstring_t *rule);
+optional(string) parseGrammarKey(iterstring_t *rule);
+optional(string) parseGrammarType(iterstring_t *rule);
+bool parseWhitespace(iterstring_t *rule);
+bool parseSeperator(iterstring_t *rule);
+bool isFollowedByAlternative(iterstring_t *rule);
 
 
 #endif // PARSER_H

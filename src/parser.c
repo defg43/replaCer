@@ -45,24 +45,38 @@ function_declartion -> return_type:C_type functionname:C_identifier '(' argument
 
 grammar_t *parseRule(iterstring_t rule) {}
 
-optional(string) parseLiteral(iterstring_t rule) {
-    if(rule.str.data == NULL) {
+optional(string) parseLiteral(iterstring_t *rule) {
+    if(rule->str.data == NULL) {
         return (optional(string)) none;
     }
 
-    if(rule.str[rule.index] != '\'') {
+    if(rule->str[rule->index] != '\'') {
         iterstringReset(rule);
         return (optional(string)) none;
     }
-    rule.index++;
-    while(isalnum(rule.str.at[rule.index]))
+
+    rule->index++;
+    string ret = string("");
+    while(isalnum(rule->str.at[rule->index]) || isalnum(rule->str.at[rule->index])) {
+        ret = appendChar(ret, rule->str.at[rule->index]);
+        rule->index++
+    }
+
+    if(rule->str[rule->index] != '\'') {
+        iterstringReset(rule);
+        return (optional(string)) none;
+    }
+
+    iterstringAdvance(rule);
+    return some(ret);
+
 }
 
-optional(string) parseGrammarKey(iterstring_t rule) {}
-optional(string) parseGrammarType(iterstring_t rule) {}
-bool parseWhitespace(iterstring_t rule) {}
-bool parseSeperator(iterstring_t rule) {}
-bool isFollowedByAlternative(iterstring_t rule) {}
+optional(string) parseGrammarKey(iterstring_t *rule) {}
+optional(string) parseGrammarType(iterstring_t *rule) {}
+bool parseWhitespace(iterstring_t *rule) {}
+bool parseSeperator(iterstring_t *rule) {}
+bool isFollowedByAlternative(iterstring_t *rule) {}
 
 option(grammar_t) compilerGrammar(size_t count, string rules[static count]) {
 	if(count == 0 || !rules) {
@@ -103,7 +117,7 @@ option(grammar_t) compilerGrammar(size_t count, string rules[static count]) {
                     }
                 } break;
                 case 1: {
-                    if(streql(tokens.at[i].at, '->')) {} else {
+                    if(streql(tokens.at[i].at, "->")) {} else {
                         fprintf(stderr, "missing arrow");
                         return (option(grammar_t)) none;
                     }
@@ -167,7 +181,7 @@ struct parsing_rules_t;
 
 typedef typeof(obj_t_value_t(*)(string, struct parsing_rules_t)) parser_func_t;
 
-typedef struct parsing_rule_t {w
+typedef struct parsing_rule_t {
     string type_name;
     bool parser_is_template;
     union {
