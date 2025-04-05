@@ -88,153 +88,10 @@ option(grammar_t) compilerGrammar(size_t count, string rules[static count]) {
 		return (option(grammar_t))none;
 	}
 	ret.count = count;
-	
-	foreach(string rule in count sized rules) {
-		// this is basically just a giant state machine
-		pair(string, grammar_rule_t) *gr_rule = malloc(sizeof(pair(string, grammar_rule_t)));
-		if(!gr_rule) {
-			fprintf(stderr, "failed to allocate memory in %s", __FUNCTION__);
-			exit(EXIT_FAILURE);
-		}
 
-        grammar_rule_t *head;
-	
-        // call function that returns linked list of grammar_rules_t
-
-        head = parseRule(rule);
-    
-    	dynarray(string) tokens = tokenizeString((char_ptr_conv_t){ .into_char_ptr = rule}, ' ');
-	   
-    	foreach(size_t i of tokens) {
-            head = (head = malloc(sizeof(grammar_t))) ? head : fprintf(stderr, "malloc failed"), exit(EXIT_FAILURE), NULL;
-			switch(i) {
-                case 0: {
-                    if(stringIsOnlyAlphNum(tokens.at[i].at)) {
-					    gr_rule->first = string(tokens.at[i]);
-				    } else {
-                        fprintf(stderr, "the name of a rule must be in plain text");
-                        return (option(grammar_t)) none;
-                    }
-                } break;
-                case 1: {
-                    if(streql(tokens.at[i].at, "->")) {} else {
-                        fprintf(stderr, "missing arrow");
-                        return (option(grammar_t)) none;
-                    }
-                } break;
-                default: {
-                    enum { parsing_key = 1, parsing_type = 2} parsing_state;
-                    bool second_literal_marker = false;
-                    foreach(char c in stringlen(tokens.at[i].at) sized tokens.at[i]) {
-                        match(c, head->literal_or_rule, 
-                            parsing_state, second_literal_marker) {
-                            pattern('\'', is_literal, _, _) {
-                                // in a literal already
-                                if(second_literal_marker) {
-                                    return (option(grammar_t)) none;
-                                } else {
-                                    // set marker
-                                    second_literal_marker = true;
-                                }
-                            }
-
-                            pattern('\'', is_rule, _, _) {
-
-                            }
-
-                            pattern('\'', _, _, _) {
-                            }
-
-                            pattern(_, is_rule, parsing_key, _ when isalpha(c) || isalnum(c)) {
-                                head->key_name = appendString(head->key_name, c);
-                            }
-
-                            pattern(_, is_rule, parsing_type, _ when isalpha(c) || isalnum(c)) {
-
-                            }
-                        }
-                        
-                        
-                        case '\'': {
-                            if(head->literal_or_rule == is_literal) {
-                                // we are already in a literal
-                                // we need to terminate it
-                            } else if(head->literal_or_rule == is_rule) {
-                                fprintf(stderr, "encountered ' when parsing rule, "
-                                        "which is only permitted in literals");
-                                return (option(grammar_t)) none;
-                            }
-                        } break;
-                    }
-                } break;
-            }
-            if(i == 0) {
-
-			} 
-    		destroyString(tokens.at[i]);
-		}
-        destroy_dynarray(tokens);
-	}
-}
-
-struct parsing_rules_t;
-
-typedef typeof(obj_t_value_t(*)(string, struct parsing_rules_t)) parser_func_t;
-
-typedef struct parsing_rule_t {
-    string type_name;
-    bool parser_is_template;
-    union {
-        string template_string;
-        parser_func_t parser_function;
-    };
-} parsing_rule_t;
-
-typedef struct parsing_rules_t {
-    parsing_rule_t *entries;
-    size_t count;
-} parsing_rules_t;
-
-bool addParserTemplate(parsing_rules_t *rules, string type_name, string template_string);
-bool addParserFromDefinition(parsing_rules_t *rules, string defition);
-
-obj_t_value_t parseFromTemplate(string input, string template);
-
-obj_t_value_t parseFromTemplate(string input, string template) {
-	if (stringlen(input) == 0) {
-		goto error;
-	}
-	// we assume the template to be a series of at least one parsers
-	string parsing_type = {};
-	string name = {};
-	
-	bool has_ident = false;
-	bool type_variant = false;
-	bool optional = false;
-	bool array_type = false;
-	bool literal = false;
-	
-    /*
-	iterstring_t inp = {
-		.previous = 0,
-		.index = 0,
-		.str = input,	
-	};
-    */
-	
-    dynarray(string) subtokens = tokenizeString(template.at, " ");
-    
-    foreach(string subtoken of subtokens) {
-        printf("the subtoken is %s\n", subtoken);
-        destroyString(subtoken);
-    }
-
-	error:
-		return (obj_t_value_t) {  };
 }
 
 object_t scanh(string fmt); // this assumes a default parsing rules
-
 
 #if 0
 
@@ -314,27 +171,7 @@ size_t parse(char *input, char *template) {
 
 }
 
-
-
 int main__test() {
-    dbg("test\n");
-
-    array(string) tokens = tokenizePairwiseString("{abc} {def} {ghi}", "{", "}");
-    
-    // array(string) tokens = tokenize("a, b, c, d, e, f", ",");
-
-    printf("the length is %ld\n", tokens.count);
-
-    foreach(string token of tokens) {
-        printf("%s\n", token);
-        destroyString(token);
-    }
-
-    /*
-    parserRegistry_t registry = { 
-        .entries = NULL, 
-        .count = 0 
-    };
-    addParserFromDefinition(&registry, "my_type -> {int}{':'}{int}");
-    */
+//    dbg("test\n");
+    printf("test");
 }

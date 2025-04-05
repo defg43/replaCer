@@ -4,7 +4,8 @@
 #include "../CSTL/include/cstl.h"
 #include "../ion/str/include/str.h"
 
-typedef struct {
+typedef struct grammar_rule_t grammar_rule_t;
+struct grammar_rule_t {
 	enum {
 		is_literal = 1,
 		is_rule = 2,
@@ -27,7 +28,7 @@ typedef struct {
        	grammar_rule_t *next;
     	grammar_rule_t *alternative;
     };
-}  grammar_rule_t;
+};
 
 typedef struct {
 	pair(string, grammar_rule_t) *at;
