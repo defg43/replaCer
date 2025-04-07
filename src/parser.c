@@ -43,6 +43,8 @@ function_declartion -> return_type:C_type functionname:C_identifier '(' argument
 #include "../pesticide/include/debug.h"
 #include "../CSTL/include/cstl.h"
 
+
+/*
 grammar_t *parseRule(iterstring_t rule) {}
 
 optional(string) parseLiteral(iterstring_t *rule) {
@@ -170,7 +172,7 @@ bool addParserFunction(parserRegistry_t *registry, char *type_name, subparser_t 
 size_t parse(char *input, char *template) {
 
 }
-
+*/
 int main__test() {
 //    dbg("test\n");
     printf("test");
