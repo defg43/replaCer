@@ -20,13 +20,13 @@ key:type
 key:type | key2:type2
 key:type?
 key:type[]
-key:type
 
 type -> key1:type1 key2:type2
 
 character -> 'a' | 'b' | 'c' | 'd' | 'e' | 'f'
+digit -> '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
 
-raw_string -> #character[]
+raw_string -> #character[] #digit[] #'!'?
 
 function_declartion -> return_type:C_type functionname:C_identifier '(' argument_list:argument[] ')' ';'
 */
@@ -43,54 +43,370 @@ function_declartion -> return_type:C_type functionname:C_identifier '(' argument
 #include "../pesticide/include/debug.h"
 #include "../CSTL/include/cstl.h"
 
+grammar_t *parseRule(iterstring_t *rule) {
 
-/*
-grammar_t *parseRule(iterstring_t rule) {}
+}
 
-optional(string) parseLiteral(iterstring_t *rule) {
-    if(rule->str.data == NULL) {
-        return (optional(string)) none;
+type_modifier_t parseTypeModifier(iterstring_t *rule) {
+    type_modifier_t ret = modifier_none;
+    bool saw_optional = false;
+    bool saw_array = false;
+    int bracket_depth = 0;
+
+    parseWhitespace(rule);
+
+    while (1) {
+        char c = rule->str.at[rule->index];
+        switch (c) {
+            case '?':
+                if (saw_optional) return modifier_none;
+                saw_optional = true;
+                ret |= modifier_optional;
+                rule->index++;
+                break;
+
+            case '[':
+                if (bracket_depth > 0) return modifier_none;
+                bracket_depth++;
+                rule->index++;
+                break;
+
+            case ']':
+                if (bracket_depth != 1 || saw_array) return modifier_none;
+                bracket_depth--;
+                saw_array = true;
+                ret |= modifier_array;
+                rule->index++;
+                break;
+            default:
+                goto end;
+        }
     }
 
-    if(rule->str[rule->index] != '\'') {
+end:
+    if (bracket_depth != 0) return modifier_none;
+
+    iterstringAdvance(rule);
+    return ret;
+}
+
+const char *convertToAnsiEscape(char *color) {
+    match(color) {
+        
+        pattern("black")   {return "\033[0;30m";}
+        pattern("red")     {return "\033[0;31m";}
+        pattern("green")   {return "\033[0;32m";}
+        pattern("yellow")  {return "\033[0;33m";}
+        pattern("blue")    {return "\033[0;34m";}
+        pattern("magenta") {return "\033[0;35m";}
+        pattern("cyan")    {return "\033[0;36m";}
+        pattern("white")   {return "\033[0;37m";}
+        pattern("reset")   {return "\033[0m";}
+        pattern(_)         {return color;}        
+    }
+    return color;
+}
+
+
+void printParsingMessage(FILE *stream, char *msg, string source, const char *const color, size_t color_start, size_t color_stop) {
+    puts(msg);
+    assert((color_start < color_stop) && 
+        (color_start < stringlen(source)) && 
+        (color_stop < stringlen(source)));
+    for(size_t i = 0; i < stringlen(source); i++) {
+        if(i == color_start) {
+            fprintf(stream, "\033[0;31m", "%s", convertToAnsiEscape(color));
+        }
+        putc(source.at[i], stream);
+        if(i == color_stop - 1) {
+            fprintf(stream, "\033[0m");
+        }
+    }
+    putc('\n', stream);
+}
+
+option(grammar_rule_t) parseGrammarRule(iterstring_t *rule) {
+    parseWhitespace(rule);
+    grammar_rule_t ret;
+    option(string) literal = parseLiteral(rule);
+    if(literal.valid) {
+        type_modifier_t mod = parseTypeModifier(rule);
+        ret = (grammar_rule_t) {
+            .literal_or_rule = is_literal,
+            .literal = literal.value,
+            .modifier = mod,
+        };
+        return (option(grammar_rule_t)) some(ret);
+    }
+
+    option(string) key_name = parseGrammarKey(rule);
+    if(!key_name.valid) {
+        fprintf(stderr, "parsing key failed at:\n %ld");
+        printParsingMessage(stderr, "parsing key failed",
+            rule->str, "red", rule->index, (rule->str.at[rule->index] == '\0') ? rule->index :
+            rule->index + 1);
+        return (option(grammar_rule_t)) none;
+    } 
+    
+    parseWhitespace(rule);
+    if(!parseSeperator(rule)) {
+        printParsingMessage(stderr, "parsing key failed, expected seperator",
+            rule->str, "red", rule->index, //(rule->str.at[rule->index] == '\0') ? rule->index :
+            rule->index + 1);
+
+        return (option(grammar_rule_t)) none;
+    }
+    option(string) rule_name = parseGrammarType(rule);
+    if(rule_name.valid) {
+        type_modifier_t mod = parseTypeModifier(rule);
+        ret = (grammar_rule_t) {
+            .literal_or_rule = is_rule,
+            .key_name = key_name.value,
+            .rule_name = rule_name.value,
+            .modifier = mod,
+        };
+        return (option(grammar_rule_t))some(ret);
+    }
+    return (option(grammar_rule_t)) none;
+}
+
+option(string) parseLiteral(iterstring_t *rule) {
+    if(rule->str.data == NULL) {
+        return (option(string)) none;
+    }
+
+    if(rule->str.at[rule->index] != '\'') {
         iterstringReset(rule);
-        return (optional(string)) none;
+        return (option(string)) none;
     }
 
     rule->index++;
     string ret = string("");
-    while(isalnum(rule->str.at[rule->index]) || isalnum(rule->str.at[rule->index])) {
+
+    while (rule->str.at[rule->index] != '\0' && rule->str.at[rule->index] != '\'') {
+        if (rule->str.at[rule->index] == '\\' && rule->str.at[rule->index + 1] != '\0') {
+            // Handle escape character
+            rule->index++;
+        }
         ret = appendChar(ret, rule->str.at[rule->index]);
-        rule->index++
+        rule->index++;
     }
 
-    if(rule->str[rule->index] != '\'') {
+    if(rule->str.at[rule->index] != '\'') {
         iterstringReset(rule);
-        return (optional(string)) none;
+        return (option(string)) none;
+    }
+
+    rule->index++;
+    iterstringAdvance(rule);
+    return (option(string)) some(ret);
+}
+
+option(string) parseGrammarKey(iterstring_t *rule) {
+    if(rule->str.data == NULL) {
+        return (option(string)) none;
+    }
+
+    string ret = string("");
+
+    if((((rule->str.at[rule->index] >= 'A') && (rule->str.at[rule->index] <= 'Z')) ||
+           ((rule->str.at[rule->index] >= 'a') && (rule->str.at[rule->index] <= 'z')))
+           || (rule->str.at[rule->index] == '_')) {
+        ret = appendChar(ret, rule->str.at[rule->index]);
+        rule->index++;    
+    } else {
+        return (option(string)) none;
+    }
+
+    while((((rule->str.at[rule->index] >= 'A') && (rule->str.at[rule->index] <= 'Z')) ||
+           ((rule->str.at[rule->index] >= 'a') && (rule->str.at[rule->index] <= 'z'))) 
+        ||((rule->str.at[rule->index] >= '0') && (rule->str.at[rule->index] <= '9'))
+        || (rule->str.at[rule->index] == '_')) {
+        ret = appendChar(ret, rule->str.at[rule->index]);
+        rule->index++;
+    }
+
+    if(rule->index == rule->previous) {
+        iterstringReset(rule);
+        return (option(string)) none;
     }
 
     iterstringAdvance(rule);
-    return some(ret);
-
+    return (option(string)) some(ret);
 }
 
-optional(string) parseGrammarKey(iterstring_t *rule) {}
-optional(string) parseGrammarType(iterstring_t *rule) {}
-bool parseWhitespace(iterstring_t *rule) {}
-bool parseSeperator(iterstring_t *rule) {}
-bool isFollowedByAlternative(iterstring_t *rule) {}
+option(string) parseGrammarType(iterstring_t *rule) {
+    return parseGrammarKey(rule);
+}
 
-option(grammar_t) compilerGrammar(size_t count, string rules[static count]) {
-	if(count == 0 || !rules) {
-		return (option(grammar_t))none;
-	}
-	grammar_t ret;
+bool parseWhitespace(iterstring_t *rule) {
+    if(rule->str.data == NULL) {
+        return false;
+    }
+    bool at_least_one_space_found = false;
 
-	if(!(ret.at = malloc(count * sizeof(grammar_rule_t)))) {
-		return (option(grammar_t))none;
-	}
-	ret.count = count;
+    while(isspace(rule->str.at[rule->index])) {
+        at_least_one_space_found = true;
+        rule->index++;
+    }
+    if(!at_least_one_space_found) {
+        iterstringReset(rule);
+    } else {
+        iterstringAdvance(rule);
+    }
 
+    return at_least_one_space_found;
+}
+
+bool parseSeperator(iterstring_t *rule) {
+    parseWhitespace(rule);
+    if(rule->str.at[rule->index] == ':') {
+        rule->index++;
+        iterstringAdvance(rule);
+    } else {
+        iterstringReset(rule);
+        return false;
+    }
+    parseWhitespace(rule);
+    return true;
+}
+
+bool isFollowedByAlternative(iterstring_t *rule) {
+    parseWhitespace(rule);
+    if(rule->str.at[rule->index] == '|') {
+        rule->index++;
+        iterstringAdvance(rule);
+    } else {
+        iterstringReset(rule);
+        return false;
+    }
+    parseWhitespace(rule);
+    return true;
+}
+
+option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]) {
+    grammar_t ret = {
+        .at = malloc(sizeof(pair(string, grammar_rule_t)) * count),
+        .count = count,
+    };
+    if (!ret.at) {
+        fprintf(stderr, "malloc failed in compileGrammar\n");
+        exit(EXIT_FAILURE);
+    }
+
+    size_t i = 0;
+    foreach (string rl of *rules) {
+        iterstring_t rule = { .str = rl };
+        option(string) rule_name = parseGrammarType(&rule);
+        if (!rule_name.valid) return (option(grammar_t)) none;
+
+        ret.at[i].first = rule_name.value;
+
+        parseWhitespace(&rule);
+        if (rule.str.at[rule.index] == '-') {
+            rule.index++;
+            if (rule.str.at[rule.index] != '>') {
+                return (option(grammar_t)) none;
+            }
+            rule.index++;
+            iterstringAdvance(&rule);
+        } else {
+            return (option(grammar_t)) none;
+        }
+
+        parseWhitespace(&rule);
+        option(grammar_rule_t) result = parseGrammarRule(&rule);
+        if (!result.valid) return (option(grammar_t)) none;
+
+        ret.at[i].second = result.value;
+        grammar_rule_t *head = &ret.at[i].second;
+
+        while (parseWhitespace(&rule), rule.str.at[rule.index]) {
+            bool is_alt = isFollowedByAlternative(&rule); 
+            option(grammar_rule_t) res = parseGrammarRule(&rule);
+            if (!res.valid) return (option(grammar_t)) none;
+
+            grammar_rule_t *ptr = malloc(sizeof(*ptr));
+            if (!ptr) {
+                fprintf(stderr, "malloc failed\n");
+                exit(EXIT_FAILURE);
+            }
+            *ptr = res.value;
+
+            head->next_or_alternative = is_alt ? is_alternative : is_next;
+            if (is_alt) {
+                head->alternative = ptr;
+            } else {
+                head->next = ptr;
+            }
+            head = ptr; // move forward in chain
+        }
+
+        i++;
+    }
+
+    return (option(grammar_t)) some(ret);
+}
+
+option(grammar_t) compileGrammar_old(size_t count, typeof(string) (*rules)[count]) {
+    grammar_t ret = {
+        .at = malloc(sizeof(pair(string, grammar_rule_t)) * count),
+        .count = count,
+    };
+    if(!ret.at) {
+        fprintf(stderr, "malloc failed in compile grammar\n");
+        exit(EXIT_FAILURE);
+    }
+    size_t i = 0;
+    foreach(string rl of *rules) {
+        iterstring_t rule = {
+            .str = rl,
+        };
+        option(string) rule_name = parseGrammarType(&rule);
+        parseWhitespace(&rule);
+        if(rule.str.at[rule.index] == '-') {
+            rule.index++;
+            if(rule.str.at[rule.index] != '>') {
+                return (option(grammar_t)) none;
+            }
+            rule.index++;
+            iterstringAdvance(&rule);
+        } else {
+            return (option(grammar_t)) none;
+            
+        }
+        parseWhitespace(&rule);
+        option(grammar_rule_t) result = parseGrammarRule(&rule);
+        grammar_rule_t *head = nullptr;
+        if(result.valid) {
+            head = &result.value;
+            memcpy(&ret.at[i].second, head, sizeof(grammar_rule_t));
+        } else {
+            return (option(grammar_t)) none;
+        }
+
+        while(parseWhitespace(&rule), rule.str.at[rule.index]) {
+            bool is_alt = isFollowedByAlternative(&rule); 
+            option(grammar_rule_t) res = parseGrammarRule(&rule);
+            if(res.valid) {
+                grammar_rule_t *ptr = malloc(sizeof res.value);
+                if(!ptr) {
+                    fprintf(stderr, "malloc failed\n");
+                    exit(EXIT_FAILURE);
+                }
+                memcpy(ptr, &res.value, sizeof res.value);
+                head->next_or_alternative = is_alt ? is_alternative : is_next;
+                if(is_alt) {
+                    head->alternative = ptr;
+                } else {
+                    head->next = ptr;  
+                }
+            } else {
+                return (option(grammar_t)) none;
+            }
+        }
+        i++;
+    }
 }
 
 object_t scanh(string fmt); // this assumes a default parsing rules
@@ -172,7 +488,7 @@ bool addParserFunction(parserRegistry_t *registry, char *type_name, subparser_t 
 size_t parse(char *input, char *template) {
 
 }
-*/
+
 int main__test() {
 //    dbg("test\n");
     printf("test");

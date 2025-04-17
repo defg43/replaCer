@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include "map.h"
-#include "../pesticide/include/debug.h"
+// #include "../pesticide/include/debug.h"
 #include "../ion/include/ion.h"
 #include "../CSTL/include/cstl.h"
 #include <stdlib.h>
