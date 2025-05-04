@@ -43,10 +43,6 @@ function_declartion -> return_type:C_type functionname:C_identifier '(' argument
 #include "../pesticide/include/debug.h"
 #include "../CSTL/include/cstl.h"
 
-grammar_t *parseRule(iterstring_t *rule) {
-
-}
-
 type_modifier_t parseTypeModifier(iterstring_t *rule) {
     type_modifier_t ret = modifier_none;
     bool saw_optional = false;
@@ -92,7 +88,6 @@ end:
 
 const char *convertToAnsiEscape(char *color) {
     match(color) {
-        
         pattern("black")   {return "\033[0;30m";}
         pattern("red")     {return "\033[0;31m";}
         pattern("green")   {return "\033[0;32m";}
@@ -284,13 +279,108 @@ bool isFollowedByAlternative(iterstring_t *rule) {
     return true;
 }
 
+grammar_rule_t *compileGrammarRuleChain(iterstring_t *rule) {
+    option(grammar_rule_t) result = parseGrammarRule(rule);
+    if (!result.valid) return NULL;
+
+    grammar_rule_t *head = malloc(sizeof(grammar_rule_t));
+    if (!head) {
+        fprintf(stderr, "malloc failed in %s\n", __FUNCTION__);
+        exit(EXIT_FAILURE);
+    }
+    *head = result.value;
+
+    grammar_rule_t *current = head;
+    while (parseWhitespace(rule), rule->str.at[rule->index]) {
+        bool is_alt = isFollowedByAlternative(rule);
+        option(grammar_rule_t) res = parseGrammarRule(rule);
+        if (!res.valid) return NULL; // ideally this would do some form of cleanup
+
+        grammar_rule_t *ptr = malloc(sizeof(grammar_rule_t));
+        if (!ptr) {
+            fprintf(stderr, "malloc failed in %s\n", __FUNCTION__);
+            exit(EXIT_FAILURE);
+        }
+        *ptr = res.value;
+
+        current->next_or_alternative = is_alt ? is_alternative : is_next;
+        if (is_alt) {
+            current->alternative = ptr;
+        } else {
+            current->next = ptr;
+        }
+        current = ptr;
+    }
+    return head;
+}
+
+string_parse_rule_t *compileStringParseRuleChain(iterstring_t *rule) {
+    if (!rule || !rule->str.at) {
+        return NULL;
+    }
+
+    string_parse_rule_t *head = NULL;
+    string_parse_rule_t *tail = NULL;
+
+    while (parseWhitespace(rule), rule->str.at[rule->index] == '#') {
+        rule->index++;
+
+        string_parse_rule_t *node = malloc(sizeof(string_parse_rule_t));
+        if (!node) {
+            fprintf(stderr, "malloc failed in %s\n", __FUNCTION__);
+            exit(EXIT_FAILURE);
+        }
+
+        option(string) gr_type = parseGrammarType(rule);
+        if (gr_type.valid) {
+            node->literal_or_rule = is_rule;
+            node->rule_name = gr_type.value;
+            node->grammar = NULL; // optional, might be resolved later
+        } else {
+            option(string) str_lit = parseLiteral(rule);
+            if (!str_lit.valid) {
+                printParsingMessage(stderr, "parsing of string rule failed:",
+                                    rule->str, "red", rule->index, rule->index + 1);
+                free(node);
+                return NULL;
+            }
+            node->literal_or_rule = is_literal;
+            node->literal = str_lit.value;
+        }
+
+        node->modifier = parseTypeModifier(rule);
+        node->next_or_alternative = is_next;
+        node->next = NULL;
+        node->alternative = NULL;
+
+        if (!head) {
+            head = node;
+            tail = node;
+        } else {
+            if (isFollowedByAlternative(rule)) {
+                tail->next_or_alternative = is_alternative;
+                tail->alternative = node;
+            } else {
+                tail->next_or_alternative = is_next;
+                tail->next = node;
+            }
+            tail = node;
+        }
+    }
+
+    dbg("the head being returned is %p", head);
+    return head;
+}
+
+
+
 option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]) {
     grammar_t ret = {
-        .at = malloc(sizeof(pair(string, grammar_rule_t)) * count),
+        .at = malloc(sizeof(pair(string, grammar_or_string_rule_t)) * count),
         .count = count,
     };
     if (!ret.at) {
-        fprintf(stderr, "malloc failed in compileGrammar\n");
+        fprintf(stderr, "malloc failed in %s\n", __FUNCTION__);
         exit(EXIT_FAILURE);
     }
 
@@ -315,98 +405,64 @@ option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]) {
         }
 
         parseWhitespace(&rule);
-        option(grammar_rule_t) result = parseGrammarRule(&rule);
-        if (!result.valid) return (option(grammar_t)) none;
 
-        ret.at[i].second = result.value;
-        grammar_rule_t *head = &ret.at[i].second;
+        bool string_rule = rule.str.at[rule.index] == '#';
+        if (string_rule) {
+            string_parse_rule_t *chain = compileStringParseRuleChain(&rule);
+            if (!chain) return (option(grammar_t)) none;
 
-        while (parseWhitespace(&rule), rule.str.at[rule.index]) {
-            bool is_alt = isFollowedByAlternative(&rule); 
-            option(grammar_rule_t) res = parseGrammarRule(&rule);
-            if (!res.valid) return (option(grammar_t)) none;
+            ret.at[i].second.gram_or_str = is_string_rule;
+            ret.at[i].second.str = chain;
+        } else {
+            grammar_rule_t *chain = compileGrammarRuleChain(&rule);
+            if (!chain) return (option(grammar_t)) none;
 
-            grammar_rule_t *ptr = malloc(sizeof(*ptr));
-            if (!ptr) {
-                fprintf(stderr, "malloc failed\n");
-                exit(EXIT_FAILURE);
-            }
-            *ptr = res.value;
-
-            head->next_or_alternative = is_alt ? is_alternative : is_next;
-            if (is_alt) {
-                head->alternative = ptr;
-            } else {
-                head->next = ptr;
-            }
-            head = ptr; // move forward in chain
+            ret.at[i].second.gram_or_str = is_grammar_rule;
+            ret.at[i].second.gram = chain;
         }
-
         i++;
     }
-
     return (option(grammar_t)) some(ret);
 }
 
-option(grammar_t) compileGrammar_old(size_t count, typeof(string) (*rules)[count]) {
-    grammar_t ret = {
-        .at = malloc(sizeof(pair(string, grammar_rule_t)) * count),
-        .count = count,
-    };
-    if(!ret.at) {
-        fprintf(stderr, "malloc failed in compile grammar\n");
-        exit(EXIT_FAILURE);
-    }
-    size_t i = 0;
-    foreach(string rl of *rules) {
-        iterstring_t rule = {
-            .str = rl,
-        };
-        option(string) rule_name = parseGrammarType(&rule);
-        parseWhitespace(&rule);
-        if(rule.str.at[rule.index] == '-') {
-            rule.index++;
-            if(rule.str.at[rule.index] != '>') {
-                return (option(grammar_t)) none;
-            }
-            rule.index++;
-            iterstringAdvance(&rule);
-        } else {
-            return (option(grammar_t)) none;
-            
-        }
-        parseWhitespace(&rule);
-        option(grammar_rule_t) result = parseGrammarRule(&rule);
-        grammar_rule_t *head = nullptr;
-        if(result.valid) {
-            head = &result.value;
-            memcpy(&ret.at[i].second, head, sizeof(grammar_rule_t));
-        } else {
-            return (option(grammar_t)) none;
-        }
+option(size_t) findGrammarRule(grammar_t *gram, string *name) {
+    for(size_t i = 0; i > gram->count; i++) {
+        if(stringeql(gram->at[i].first, *name)) {
+            return (option(size_t)) some(i);
+        } else continue;
+    }    
+    return (option(size_t))none;
+}
 
-        while(parseWhitespace(&rule), rule.str.at[rule.index]) {
-            bool is_alt = isFollowedByAlternative(&rule); 
-            option(grammar_rule_t) res = parseGrammarRule(&rule);
-            if(res.valid) {
-                grammar_rule_t *ptr = malloc(sizeof res.value);
-                if(!ptr) {
-                    fprintf(stderr, "malloc failed\n");
-                    exit(EXIT_FAILURE);
-                }
-                memcpy(ptr, &res.value, sizeof res.value);
-                head->next_or_alternative = is_alt ? is_alternative : is_next;
-                if(is_alt) {
-                    head->alternative = ptr;
+bool linkGrammar(grammar_t *gram) {
+    for(size_t i = 0; i < gram->count; i++) {
+        if(gram->at[i].second.gram_or_str == is_grammar_rule) {
+            grammar_rule_t *head = gram->at[i].second.gram;
+            do if(head->literal_or_rule == is_rule) {
+                option(size_t) index = findGrammarRule(gram, &head->rule_name);
+                if(index.valid) {
+                    head->grammar = &gram->at[index.value].second;
+                    head = head->next;
                 } else {
-                    head->next = ptr;  
+                    fprintf(stderr, "linking failed, unknown rule %s\n", head->rule_name);
+                    return false;
                 }
-            } else {
-                return (option(grammar_t)) none;
-            }
+            } else head = head->next; while(head);
+        } else if(gram->at[i].second.gram_or_str = is_string_rule) {
+            string_parse_rule_t *head = gram->at[i].second.gram;
+            do if(head->literal_or_rule == is_rule) {
+                option(size_t) index = findGrammarRule(gram, &head->rule_name);
+                if(index.valid) {
+                    head->grammar = &gram->at[index.value].second;
+                    head = head->next;
+                } else {
+                    fprintf(stderr, "linking failed, unknown rule %s\n", head->rule_name);
+                    return false;
+                }
+            } else head = head->next; while(head);
         }
-        i++;
     }
+    return true;
 }
 
 object_t scanh(string fmt); // this assumes a default parsing rules
