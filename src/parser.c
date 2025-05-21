@@ -1,28 +1,17 @@
 /*
-1.	{type}  // invokes the subparser for type, but does not print its result, parsing fails if the subparserfails
-2.	{ident:type} // invokes subparser for type and prints the parsed text with the prefix "ident : %s", parsing fails if the subparserfails
-3.	{ident1:type1 | idnet2:type2 | indent3:type3 | ... } // all subparsers get invoked in a for loop. The first succeeding parser is considered the result, parsing fails if all subparserfails
-4.	{ident:type?}  // invokes subparser for type, if the subparser fails parsing resumes, nothing is printed
-5.  {ident:type[]} // invokes subparser for type succesively, the subparser must suceed at least once, if the subparser does not suceed at least once parsing fails, the results are accumulated in a temorary string or array of strings and printed separated by comas
-				   // this behavior also extends to literals so 'x'[], would describe a sequence of at least on character x 
-6.	'x' // character literal, must be present in the input string, otherwise parsing fails
-8.  rules 3 and 4 apply here, migth look like this: 'x'? or 'x'|'y'|'z', this also is refered to as a non-merging literal, this may appear outside of a specifier {}
-registering a new type with a template string:
-	type -> ... // the rigth side migth use rule 1., rule 4. and the special rule 9.
-	9.	{'x'} // merging literal, if this literal is encountered it is merged into the string that is constructed in the process of parsing an expression of the newly defined type
-	// here | and ? also apply so expressions migth look like this {'x'|'y'|'z'} or {'x'?}
-	a definition might thus look like this: my_type -> {int}{':'}{int} // the parsed input is accumulated in a string that represent my_type, an example of this migth look like 2:33
-*/
+grammar rules:
+'literal' parses a literal and dicards the output
+key:type parses a type of rule and stores the parsed result in 'key'
+key:type | key2:type2 parses either type and stores the result in key 
+	or parses type2 and stores the result in key2
+key:type? tries to parse type but if parsing fails key is not present
+key:type[] parses at least one occurence of type and stores it in key which is 
+	an array
 
-/*
-'literal'
-key:type
-key:type | key2:type2
-key:type?
-key:type[]
+raw_string -> #type[] #type2? #'literal' | #'other literal' parsing rule for
+	raw strings that arent stored inside keys
 
-type -> key1:type1 key2:type2
-
+potential examples
 character -> 'a' | 'b' | 'c' | 'd' | 'e' | 'f'
 digit -> '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
 
