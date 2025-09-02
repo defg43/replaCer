@@ -26,6 +26,53 @@ void printIndent(int level) {
     }
 }
 
+void printTypeModifier(type_modifier_t mod) {
+    switch (mod) {
+        case modifier_both:     printf("[]?"); break;
+        case modifier_array:    printf("[]");  break;
+        case modifier_optional: printf("?");   break;
+        default: break;
+    }
+}
+
+void printGrammarRule_t(grammar_rule_t to_print) {
+    if (to_print.literal_or_rule == is_literal) {
+        printf("literal: '%s'", to_print.literal);
+    } else if (to_print.literal_or_rule == is_rule) {
+        printf("rule: %s : %s", to_print.key_name, to_print.rule_name);
+    } else {
+        printf("invalid");
+    }
+    printTypeModifier(to_print.modifier);
+}
+
+void printStringParseRule(string_parse_rule_t *rule, int level) {
+    while (rule) {
+        printIndent(level);
+        if (rule->literal_or_rule == is_literal) {
+            printf("literal: '%s'", rule->literal);
+        } else if (rule->literal_or_rule == is_rule) {
+            printf("rule: %s", rule->rule_name);
+        } else {
+            printf("invalid");
+        }
+
+        printTypeModifier(rule->modifier);
+        printf("\n");
+
+        if (rule->next_or_alternative == is_next) {
+            rule = rule->next;
+        } else if (rule->next_or_alternative == is_alternative) {
+            printIndent(level);
+            printf("| ");
+            rule = rule->alternative;
+        } else {
+            break;
+        }
+    }
+}
+
+
 void printGrammarRuleTree(grammar_rule_t *rule, int level) {
     while (rule) {
         printIndent(level);
@@ -47,7 +94,18 @@ void printGrammarRuleTree(grammar_rule_t *rule, int level) {
 void printGrammar(grammar_t grammar) {
     for (size_t i = 0; i < grammar.count; ++i) {
         printf("%s:\n", grammar.at[i].first);
-        printGrammarRuleTree(&grammar.at[i].second, 1);
+
+        grammar_or_string_rule_t *entry = &grammar.at[i].second;
+
+        if (entry->gram_or_str == is_grammar_rule) {
+            printGrammarRuleTree(entry->gram, 1);
+        } else if (entry->gram_or_str == is_string_rule) {
+            printStringParseRule(entry->str, 1);
+        } else {
+            printIndent(1);
+            printf("invalid rule type\n");
+        }
+
         printf("\n");
     }
 }
@@ -59,19 +117,6 @@ void printOptionString(option(string) to_print) {
         printf("none");
     }
     return;
-}
-
-void printGrammarRule_t(grammar_rule_t to_print) {
-    if(to_print.literal_or_rule == is_literal) {
-        printf("literal: '%s'", to_print.literal);
-    } else if(to_print.literal_or_rule == is_rule) {
-        printf("rule: %s : %s", to_print.key_name, to_print.rule_name);
-    } else {
-        printf("invalid");
-    }
-    printf("%s", to_print.modifier == modifier_both ? "[]?" :
-            to_print.modifier == modifier_array ? "[]" :
-            to_print.modifier == modifier_optional ? "?" : "");
 }
 
 void printOptionGrammarRule_t(option(grammar_rule_t) to_print) {
@@ -497,19 +542,27 @@ int main() {
     runTests(lengthof(tests), &tests);
     // testparserGrammarRule_t();
 
-    string grammar[] = {
-        string("char -> 'a' | 'b' | 'c'"),
-        string("digit -> '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'"),
-        string("name -> first:char[] rest:char?"),
-        string("number -> '-'? digits:digit[]"),
-        string("entry -> name:name value:number?"),
-        string("list -> en:entry[] ','?"),
-        string("top -> l:list | e:entry"),
-    };
+string grammar[] = {
+    string("char -> ' ' | '!' | '\"' | '#' | '$' | '%' | '&' | '\\'' | '(' | ')' | '*' | '+' | ',' | '-' | '.' | '/'"
+           // " | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'"
+           " | ':' | ';' | '<' | '=' | '>' | '?' | '@'"
+           " | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'"
+           " | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'"
+           " | '[' | '\\\\' | ']' | '^' | '_' | '`'"
+           " | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'"
+           " | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'"
+           " | '{' | '|' | '}' | '~'"),
+    string("digit -> '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'"),
+    string("operator -> '+' | '-' | '*' | '/' | '%' | '++' | '--' | '==' | '!=' | '<' | '<=' | '>' | '>='"
+       " | '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&&' | '||' | '!' | '&' | '|' | '^' | '~'"),
+    string("token -> #char? #char[] | #digit[]")
+};
 
     option(grammar_t) testg = compileGrammar(lengthof(grammar), &grammar);
     if(testg.valid) {
         printf("grammar compilation successfull\n");
+        printf("count of grammars: %ld\n", testg.value.count);
+        printf("pointer is %p\n", testg.value.at[0].second.gram);
         printGrammar(testg.value);
         printf("\n");
     } else {
