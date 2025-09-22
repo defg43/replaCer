@@ -416,6 +416,7 @@ option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]) {
 
 option(size_t) findGrammarRule(grammar_t *gram, string *name) {
     for(size_t i = 0; i > gram->count; i++) {
+    	printf("comparing %s with %s\n", gram->at[i].first, *name);
         if(stringeql(gram->at[i].first, *name)) {
             return (option(size_t)) some(i);
         } else continue;
@@ -423,22 +424,47 @@ option(size_t) findGrammarRule(grammar_t *gram, string *name) {
     return (option(size_t))none;
 }
 
+bool linkGrammar_ruleChain(grammar_rule_t *head, grammar_t *gram) {
+	if(head->next == NULL) {
+		return true;
+	}
+}
+
 bool linkGrammar(grammar_t *gram) {
+	if(!gram) {	
+		return false; 
+	}
+
+	for(size_t i = 0; i < gram->count; i++) {
+		// each line in the grammar points to other grammars
+		grammar_rule_t *head = gram->at[i].second.gram;
+		if(!linkGrammar_ruleChain(head, gram)) {
+			return false;
+		} else continue;
+	}
+}
+
+// both branches assign grammar which is wrong: TODO fix
+bool linkGrammar_old(grammar_t *gram) {
+	printf("count of grammar: %ld\n", gram->count);
     for(size_t i = 0; i < gram->count; i++) {
-        if(gram->at[i].second.gram_or_str == is_grammar_rule) {
-            grammar_rule_t *head = gram->at[i].second.gram;
-            do if(head->literal_or_rule == is_rule) {
-                option(size_t) index = findGrammarRule(gram, &head->rule_name);
-                if(index.valid) {
+    	if(gram->at[i].second.gram_or_str == is_grammar_rule) {
+           	grammar_rule_t *head = gram->at[i].second.gram;
+           	printf("head->literal_or_rule: %s\n", head->literal_or_rule == is_rule ? "rule" : "literal");
+           	do if(head->literal_or_rule == is_rule) {
+            	option(size_t) index = findGrammarRule(gram, &head->rule_name);
+				printf("here too\n");
+            	if(index.valid) {
                     head->grammar = &gram->at[index.value].second;
                     head = head->next;
-                } else {
+            	} else {
                     fprintf(stderr, "linking failed, unknown rule %s\n", head->rule_name);
                     return false;
                 }
             } else head = head->next; while(head);
         } else if(gram->at[i].second.gram_or_str = is_string_rule) {
-            string_parse_rule_t *head = gram->at[i].second.gram;
+            string_parse_rule_t *head = gram->at[i].second.str;
+           	printf("head->literal_or_rule: %s\n", head->literal_or_rule == is_rule ? "rule" : "literal");
             do if(head->literal_or_rule == is_rule) {
                 option(size_t) index = findGrammarRule(gram, &head->rule_name);
                 if(index.valid) {

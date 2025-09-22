@@ -5,6 +5,8 @@
 #include "../ion/str/include/str.h"
 
 typedef struct grammar_rule_t grammar_rule_t;
+typedef struct grammar_or_string_rule grammar_or_string_rule_t;
+
 
 typedef	enum {
 		modifier_none     = 0b0000'0000,
@@ -22,6 +24,7 @@ typedef enum {
 	is_next = 1, 
 	is_alternative = 2,
 } alt_or_next_t;
+
 struct grammar_rule_t {
 	literal_or_rule_t literal_or_rule;
 	union {
@@ -42,7 +45,7 @@ struct grammar_rule_t {
 
 typedef struct string_parse_rule_t string_parse_rule_t;
 
-typedef struct {
+struct grammar_or_string_rule {
 	enum {
 		is_grammar_rule = 1,
 		is_string_rule = 2,
@@ -51,7 +54,7 @@ typedef struct {
 		grammar_rule_t *gram;
 		string_parse_rule_t *str;
 	};
-} grammar_or_string_rule_t;
+};
 
 struct string_parse_rule_t {
 	literal_or_rule_t literal_or_rule;

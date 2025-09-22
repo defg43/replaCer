@@ -565,6 +565,14 @@ string grammar[] = {
         printf("pointer is %p\n", testg.value.at[0].second.gram);
         printGrammar(testg.value);
         printf("\n");
+
+        bool success = linkGrammar(&testg.value);
+        if(success) {
+        	printf("linking passed ");
+        } else {
+        	printf("linking failed");
+        }
+        puts("\n");
     } else {
         printf("failed to compile grammar\n");
     }
