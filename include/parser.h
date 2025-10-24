@@ -7,7 +7,6 @@
 typedef struct grammar_rule_t grammar_rule_t;
 typedef struct grammar_or_string_rule grammar_or_string_rule_t;
 
-
 typedef	enum {
 		modifier_none     = 0b0000'0000,
 		modifier_array 	  = 0b0000'0001,

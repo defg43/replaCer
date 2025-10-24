@@ -415,13 +415,12 @@ option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]) {
 }
 
 option(size_t) findGrammarRule(grammar_t *gram, string *name) {
-    for(size_t i = 0; i > gram->count; i++) {
-    	printf("comparing %s with %s\n", gram->at[i].first, *name);
+    for(size_t i = 0; i < gram->count; i++) {
         if(stringeql(gram->at[i].first, *name)) {
             return (option(size_t)) some(i);
-        } else continue;
-    }    
-    return (option(size_t))none;
+        }
+    }
+    return (option(size_t)) none;
 }
 
 bool linkGrammar_ruleChain(grammar_rule_t *head, grammar_t *gram) {
@@ -431,17 +430,67 @@ bool linkGrammar_ruleChain(grammar_rule_t *head, grammar_t *gram) {
 }
 
 bool linkGrammar(grammar_t *gram) {
-	if(!gram) {	
-		return false; 
-	}
+    if(!gram) {
+        return false;
+    }
 
-	for(size_t i = 0; i < gram->count; i++) {
-		// each line in the grammar points to other grammars
-		grammar_rule_t *head = gram->at[i].second.gram;
-		if(!linkGrammar_ruleChain(head, gram)) {
-			return false;
-		} else continue;
-	}
+    // Iterate through each grammar definition
+    for(size_t i = 0; i < gram->count; i++) {
+        if(gram->at[i].second.gram_or_str == is_grammar_rule) {
+            // Handle grammar_rule_t chain
+            grammar_rule_t *current = gram->at[i].second.gram;
+            
+            while(current) {
+                if(current->literal_or_rule == is_rule) {
+                    // Find the grammar definition for this rule
+                    option(size_t) index = findGrammarRule(gram, &current->rule_name);
+                    if(index.valid) {
+                        current->grammar = &gram->at[index.value].second;
+                    } else {
+                        fprintf(stderr, "linking failed, unknown rule '%s'\n", current->rule_name.at);
+                        return false;
+                    }
+                }
+                
+                // Move to next node in chain (could be next or alternative)
+                if(current->next_or_alternative == is_next) {
+                    current = current->next;
+                } else if(current->next_or_alternative == is_alternative) {
+                    current = current->alternative;
+                } else {
+                    break; // End of chain
+                }
+            }
+            
+        } else if(gram->at[i].second.gram_or_str == is_string_rule) {
+            // Handle string_parse_rule_t chain
+            string_parse_rule_t *current = gram->at[i].second.str;
+            
+            while(current) {
+                if(current->literal_or_rule == is_rule) {
+                    // Find the grammar definition for this rule
+                    option(size_t) index = findGrammarRule(gram, &current->rule_name);
+                    if(index.valid) {
+                        current->grammar = &gram->at[index.value].second;
+                    } else {
+                        fprintf(stderr, "linking failed, unknown rule '%s'\n", current->rule_name.at);
+                        return false;
+                    }
+                }
+                
+                // Move to next node in chain
+                if(current->next_or_alternative == is_next) {
+                    current = current->next;
+                } else if(current->next_or_alternative == is_alternative) {
+                    current = current->alternative;
+                } else {
+                    break; // End of chain
+                }
+            }
+        }
+    }
+    
+    return true;
 }
 
 // both branches assign grammar which is wrong: TODO fix

@@ -31,6 +31,7 @@ void printTypeModifier(type_modifier_t mod) {
         case modifier_both:     printf("[]?"); break;
         case modifier_array:    printf("[]");  break;
         case modifier_optional: printf("?");   break;
+		case modifier_none: 
         default: break;
     }
 }
@@ -92,8 +93,9 @@ void printGrammarRuleTree(grammar_rule_t *rule, int level) {
 }
 
 void printGrammar(grammar_t grammar) {
+	printf("entered printGrammar\n");
     for (size_t i = 0; i < grammar.count; ++i) {
-        printf("%s:\n", grammar.at[i].first);
+        printf("name here is %s:\n", grammar.at[i].first);
 
         grammar_or_string_rule_t *entry = &grammar.at[i].second;
 
@@ -568,7 +570,8 @@ string grammar[] = {
 
         bool success = linkGrammar(&testg.value);
         if(success) {
-        	printf("linking passed ");
+        	printf("linking passed\n");
+        	printGrammar(testg.value); 
         } else {
         	printf("linking failed");
         }
