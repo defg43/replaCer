@@ -361,8 +361,6 @@ string_parse_rule_t *compileStringParseRuleChain(iterstring_t *rule) {
     return head;
 }
 
-
-
 option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]) {
     grammar_t ret = {
         .at = malloc(sizeof(pair(string, grammar_or_string_rule_t)) * count),
@@ -605,7 +603,27 @@ bool addParserFunction(parserRegistry_t *registry, char *type_name, subparser_t 
 }
 #endif // 0
 
-size_t parse(char *input, char *template) {
+object_t parseIntoObject(object_t obj, string input, grammar_t gram) {
+	// we assume that we are just appending results into the object that is 
+	// already created
+	iterstring_t is = { .str = input, .index = 0, .previous = 0 };
+
+	// some form of entry point is required at which we start parsing
+	// string recursively
+	// if we run into alternaitve rules we try every single alternative
+	// at least one must be met, as soon as we have found one rule that works
+	// we should stop as soon as one rule is matched
+	// for arrays we need to match the rule at least once
+	// for options we dont need but can match the rule
+	// all of these are stored in json format
+	// if we at some point fail at parsing we stop and the given input
+	// is not parseable with the provided grammar
+
+	// what should be the root? should it have a specific required name?
+	// should the root just be the first entry in the grammar??
+	// should any rule be a valid entry point?
+	// should the entry point name be provided as a seperate name to this function
+	// as an argument?
 
 }
 

@@ -89,4 +89,5 @@ bool parseSeperator(iterstring_t *rule);
 bool isFollowedByAlternative(iterstring_t *rule);
 void printParsingMessage(FILE *stream, char *msg, string source,const char *const color, size_t color_start, size_t color_stop);
 
+object_t parseIntoObject(object_t obj, string input, grammar_t gram);
 #endif // PARSER_H

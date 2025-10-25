@@ -579,6 +579,16 @@ string grammar[] = {
     } else {
         printf("failed to compile grammar\n");
     }
+
+	parseIntoObject(createEmptyObject(), string("test"), testg.value);
+
+    // cleanup of strings
+
+    foreach(string to_free of grammar) {
+    	printf("just freed the string %s\n", to_free);
+    	destroyString(to_free);
+    }
+    
 #endif
 
 /*    
