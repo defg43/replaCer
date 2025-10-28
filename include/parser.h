@@ -8,10 +8,10 @@ typedef struct grammar_rule_t grammar_rule_t;
 typedef struct grammar_or_string_rule grammar_or_string_rule_t;
 
 typedef	enum {
-		modifier_none     = 0b0000'0000,
-		modifier_array 	  = 0b0000'0001,
-		modifier_optional = 0b0000'0010,
-		modifier_both	  = 0b0000'0011,
+		modifier_none     = 0b00,
+		modifier_array 	  = 0b01,
+		modifier_optional = 0b10,
+		modifier_both	  = 0b11,
 } type_modifier_t;
 
 typedef enum {
@@ -89,5 +89,5 @@ bool parseSeperator(iterstring_t *rule);
 bool isFollowedByAlternative(iterstring_t *rule);
 void printParsingMessage(FILE *stream, char *msg, string source,const char *const color, size_t color_start, size_t color_stop);
 
-object_t parseIntoObject(object_t obj, string input, grammar_t gram);
+object_t parseIntoObject(object_t obj, string input, grammar_t *gram, string start_rule);
 #endif // PARSER_H

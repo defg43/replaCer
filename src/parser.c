@@ -490,120 +490,395 @@ bool linkGrammar(grammar_t *gram) {
     
     return true;
 }
+object_t scanh(string fmt); // this assumes a default parsing rules
 
-// both branches assign grammar which is wrong: TODO fix
-bool linkGrammar_old(grammar_t *gram) {
-	printf("count of grammar: %ld\n", gram->count);
-    for(size_t i = 0; i < gram->count; i++) {
-    	if(gram->at[i].second.gram_or_str == is_grammar_rule) {
-           	grammar_rule_t *head = gram->at[i].second.gram;
-           	printf("head->literal_or_rule: %s\n", head->literal_or_rule == is_rule ? "rule" : "literal");
-           	do if(head->literal_or_rule == is_rule) {
-            	option(size_t) index = findGrammarRule(gram, &head->rule_name);
-				printf("here too\n");
-            	if(index.valid) {
-                    head->grammar = &gram->at[index.value].second;
-                    head = head->next;
-            	} else {
-                    fprintf(stderr, "linking failed, unknown rule %s\n", head->rule_name);
-                    return false;
-                }
-            } else head = head->next; while(head);
-        } else if(gram->at[i].second.gram_or_str = is_string_rule) {
-            string_parse_rule_t *head = gram->at[i].second.str;
-           	printf("head->literal_or_rule: %s\n", head->literal_or_rule == is_rule ? "rule" : "literal");
-            do if(head->literal_or_rule == is_rule) {
-                option(size_t) index = findGrammarRule(gram, &head->rule_name);
-                if(index.valid) {
-                    head->grammar = &gram->at[index.value].second;
-                    head = head->next;
-                } else {
-                    fprintf(stderr, "linking failed, unknown rule %s\n", head->rule_name);
-                    return false;
-                }
-            } else head = head->next; while(head);
+static option(obj_t_value_t) parseGrammarRuleChain(iterstring_t *is, grammar_rule_t *rule);
+static option(obj_t_value_t) parseStringRuleChain(iterstring_t *is, string_parse_rule_t *rule);
+static option(obj_t_value_t) parseGrammarOrStringRule(iterstring_t *is, grammar_or_string_rule_t *rule);
+
+static string flattenToString(obj_t_value_t val);
+
+static bool parseLiteralString(iterstring_t *is, string literal) {
+    size_t lit_len = stringlen(literal);
+    
+    for(size_t i = 0; i < lit_len; i++) {
+        if(is->str.at[is->index + i] == '\0' || 
+           is->str.at[is->index + i] != literal.at[i]) {
+            return false;
         }
     }
+    
+    is->index += lit_len;
+    iterstringAdvance(is);
     return true;
 }
 
-object_t scanh(string fmt); // this assumes a default parsing rules
+static string flattenToString(obj_t_value_t val) {
+    switch(val.discriminant) {
+        case obj_t_string:
+            return stringFromString(val.str);
+            
+        case obj_t_array: {
+            string result = string("");
+            for(size_t i = 0; i < val.arr.count; i++) {
+                string part = flattenToString(val.arr.array[i]);
+                result = appendString(result, part);
+                destroyString(part);
+            }
+            return result;
+        }
+        
+        case obj_t_obj: {
+            string result = string("");
+            for(size_t i = 0; i < val.obj.count; i++) {
+                string part = flattenToString(val.obj.value[i]);
+                result = appendString(result, part);
+                destroyString(part);
+            }
+            return result;
+        }
+        
+        default:
+            return string("");
+    }
+}
 
-#if 0
-
-bool addParserFromDefinition(parserRegistry_t *registry, char *definition) {
-    // split the type name from the definition of the subparser
-    // find first occurence of '->' in the definition
-    size_t arrow_index = 0;
-    size_t len = strlen(definition);
-    for(size_t i = 0; i < len - 1; i++) {
-        if(definition[i] == '-' && definition[i + 1] == '>') {
-            arrow_index = i;
+static option(obj_t_value_t) parseStringRuleChain(iterstring_t *is, string_parse_rule_t *rule) {
+    printf("parseStringRuleChain called, rule=%p\n", (void*)rule);
+    if(!rule) {
+        printf("  rule is NULL!\n");
+        return (option(obj_t_value_t)) none;
+    }
+    printf("  first node: literal_or_rule=%d, modifier=%d\n", 
+           rule->literal_or_rule, rule->modifier);
+           
+    string result = string("");
+    string_parse_rule_t *current = rule;
+    
+    while(current) {
+        bool matched = false;
+        
+        if(current->literal_or_rule == is_literal) {
+            if(parseLiteralString(is, current->literal)) {
+                result = appendString(result, current->literal);
+                matched = true;
+            }
+        } else if(current->literal_or_rule == is_rule) {
+            if(!current->grammar) {
+                fprintf(stderr, "Unlinked grammar rule in string parse\n");
+                destroyString(result);
+                return (option(obj_t_value_t)) none;
+            }
+            
+            if(current->modifier & modifier_array) {
+                option(obj_t_value_t) first = parseGrammarOrStringRule(is, current->grammar);
+                if(!first.valid) {
+                    // Array match failed, don't set matched=true
+                } else {
+                    string part = flattenToString(first.value);
+                    result = appendString(result, part);
+                    destroyString(part);
+                    
+                    while(1) {
+                        size_t save_pos = is->index;
+                        option(obj_t_value_t) next = parseGrammarOrStringRule(is, current->grammar);
+                        if(!next.valid) {
+                            is->index = save_pos;
+                            break;
+                        }
+                        string next_part = flattenToString(next.value);
+                        result = appendString(result, next_part);
+                        destroyString(next_part);
+                    }
+                    matched = true;
+                }
+                
+            } else if(current->modifier & modifier_optional) {
+                size_t save_pos = is->index;
+                option(obj_t_value_t) opt = parseGrammarOrStringRule(is, current->grammar);
+                if(opt.valid) {
+                    string part = flattenToString(opt.value);
+                    result = appendString(result, part);
+                    destroyString(part);
+                } else {
+                    is->index = save_pos;
+                }
+                matched = true;
+                
+            } else {
+                option(obj_t_value_t) val = parseGrammarOrStringRule(is, current->grammar);
+                if(val.valid) {
+                    string part = flattenToString(val.value);
+                    result = appendString(result, part);
+                    destroyString(part);
+                    matched = true;
+                }
+            }
+        }
+        
+        if(!matched) {
+            if(current->next_or_alternative == is_alternative && current->alternative) {
+                iterstringReset(is);
+                destroyString(result);
+                return parseStringRuleChain(is, current->alternative);
+            } else {
+                iterstringReset(is);
+                destroyString(result);
+                return (option(obj_t_value_t)) none;
+            }
+        }
+        
+        if(current->next_or_alternative == is_next && current->next) {
+            current = current->next;
+        } else {
             break;
         }
     }
-    // create substring for the type and trim whitespace
-    substring_t type_name = substringTrimWhitespace(substring(definition, definition + arrow_index));
-    dbg("the trimmed types is ");
-    printSubstring(type_name);
-
-    substring_t template_string = substring(definition + arrow_index + 2, definition + len);
-    dbg("the template string is %s\n", template_string.start);
-    dbg("the deinition is %s\n", definition);
-
-    auto type_name_str = strdupSubstring(type_name);
-    auto template_string_str = strdupSubstring(template_string);
-    dbg("the type name is %s\n", type_name_str);
-    dbg("the template string is %s\n", template_string_str);    
-
-    return addParserTemplate(registry, type_name_str, template_string_str);
+    
+    obj_t_value_t ret = { .discriminant = obj_t_string, .str = result };
+    return (option(obj_t_value_t)) some(ret);
 }
 
-bool addParserTemplate(parserRegistry_t *registry, char *type_name, char *template_string) {
-    if(registry->count == 0) {
-        registry->entries = malloc(sizeof(parserRegistryEntry));
-        if(!registry->entries) {
-            printh("failed to allocate memory for parser registry\n");
-            return false;
+static option(obj_t_value_t) parseGrammarRuleChain(iterstring_t *is, grammar_rule_t *rule) {
+    if(!rule) return (option(obj_t_value_t)) none;
+
+	printf("parseGrammarRuleChain called, rule=%p\n", (void*)rule);
+	if(rule) printf("  first node: literal_or_rule=%d\n", rule->literal_or_rule);
+    
+    object_t result = createEmptyObject();
+    grammar_rule_t *current = rule;
+    
+    while(current) {
+	   	printf("  current node: literal_or_rule=%d, modifier=%d\n", 
+        	current->literal_or_rule, current->modifier);
+        if(current->literal_or_rule == is_literal) {
+            if(!parseLiteralString(is, current->literal)) {
+                if(current->next_or_alternative == is_alternative && current->alternative) {
+                    iterstringReset(is);
+                    destroyObject(result);
+                    return parseGrammarRuleChain(is, current->alternative);
+                }
+                iterstringReset(is);
+                destroyObject(result);
+                return (option(obj_t_value_t)) none;
+            }
+            
+        } else if(current->literal_or_rule == is_rule) {
+            if(!current->grammar) {
+                fprintf(stderr, "Unlinked grammar rule\n");
+                destroyObject(result);
+                return (option(obj_t_value_t)) none;
+            }
+            
+            if(current->modifier & modifier_array) {
+                array_t arr = createEmptyArray();
+                
+                option(obj_t_value_t) first = parseGrammarOrStringRule(is, current->grammar);
+                if(!first.valid) {
+                    if(current->next_or_alternative == is_alternative && current->alternative) {
+                        iterstringReset(is);
+                        destroyObject(result);
+                        destroyArray(arr);
+                        return parseGrammarRuleChain(is, current->alternative);
+                    }
+                    destroyObject(result);
+                    destroyArray(arr);
+                    return (option(obj_t_value_t)) none;
+                }
+                
+                arr = insertIntoArray(arr, first.value);
+                
+                while(1) {
+                    size_t save_pos = is->index;
+                    option(obj_t_value_t) next = parseGrammarOrStringRule(is, current->grammar);
+                    if(!next.valid) {
+                        is->index = save_pos;
+                        break;
+                    }
+                    arr = insertIntoArray(arr, next.value);
+                }
+                
+                result = insertArrayEntry(result, current->key_name, arr);
+                
+            } else if(current->modifier & modifier_optional) {
+                size_t save_pos = is->index;
+                option(obj_t_value_t) opt = parseGrammarOrStringRule(is, current->grammar);
+                if(opt.valid) {
+                    result = insertObjectEntry(result, current->key_name, opt.value);
+                } else {
+                    is->index = save_pos;
+                }
+                
+            } else {
+                option(obj_t_value_t) val = parseGrammarOrStringRule(is, current->grammar);
+                if(!val.valid) {
+                    if(current->next_or_alternative == is_alternative && current->alternative) {
+                        iterstringReset(is);
+                        destroyObject(result);
+                        return parseGrammarRuleChain(is, current->alternative);
+                    }
+                    destroyObject(result);
+                    return (option(obj_t_value_t)) none;
+                }
+                result = insertObjectEntry(result, current->key_name, val.value);
+            }
         }
-        registry->count = 1;
-    } else {
-        registry->entries = 
-            realloc(registry->entries, (registry->count + 1) * sizeof(parserRegistryEntry));
-        registry->count++;
+        
+        if(current->next_or_alternative == is_next && current->next) {
+            current = current->next;
+        } else if(current->next_or_alternative == is_alternative) {
+            break;
+        } else {
+            break;
+        }
+    }
+    
+    obj_t_value_t ret = {
+        .discriminant = obj_t_obj,
+        .obj = result
+    };
+    return (option(obj_t_value_t)) some(ret);
+}
+
+static option(obj_t_value_t) parseGrammarOrStringRule(iterstring_t *is, grammar_or_string_rule_t *rule) {
+    if(!rule) {
+        printf("parseGrammarOrStringRule: rule is NULL!\n");
+        return (option(obj_t_value_t)) none;
     }
 
-    dbg("the type name is %s\n", type_name);
-    registry->entries[registry->count - 1].type_name = type_name;
-    registry->entries[registry->count - 1].parser_is_template = true;
-    registry->entries[registry->count - 1].template_string = template_string;
 
-    return true;
+    printf("parseGrammarOrStringRule: gram_or_str=%d\n", rule->gram_or_str);
+    
+    if(rule->gram_or_str == is_grammar_rule) {
+        return parseGrammarRuleChain(is, rule->gram);
+    } else if(rule->gram_or_str == is_string_rule) {
+    	printf("  calling parseStringRuleChain with rule->str=%p\n", (void*)rule->str);
+        return parseStringRuleChain(is, rule->str);
+    }
+    
+    printf("parseGrammarOrStringRule: unknown rule type!\n");
+    return (option(obj_t_value_t)) none;
 }
 
-bool addParserFunction(parserRegistry_t *registry, char *type_name, subparser_t parser_function) {
-    if(registry->count == 0) {
-        registry->entries = malloc(sizeof(parserRegistryEntry));
-        if(!registry->entries) {
-            printh("failed to allocate memory for parser registry\n");
-            return false;
-        }
-        registry->count = 1;
-    } else {
-        registry->entries = 
-            realloc(registry->entries, (registry->count + 1) * sizeof(parserRegistryEntry));
-        registry->count++;
+option(obj_t_value_t) genericParserEntry(iterstring_t *is, struct grammar_or_string_rule *rule) {
+    if(!rule) {
+        return (option(obj_t_value_t)) none;
     }
 
-    registry->entries[registry->count - 1].type_name = type_name;
-    registry->entries[registry->count - 1].parser_is_template = false;
-    registry->entries[registry->count - 1].parser_function = parser_function;
+    if(rule->gram_or_str == is_grammar_rule) {
+        grammar_rule_t *r = rule->gram;
+        switch (r->modifier) {
+            case modifier_none:
+                option(obj_t_value_t) result = parseRegularRule(is, r);
+            break;
+            case modifier_array:
+                // we collect the array here
+                obj_t_array_t arr = createEmptyArray();
+                option(obj_t_value_t) result = parseRegularRule(is, r);
 
-    return true;
+
+
+                do {
+
+                }
+
+
+            break;
+            case modifier_optional:
+
+            break;
+            default:
+
+            break;
+
+        }
+    } else {
+        // do this for string parsing // by default capture all strings
+    }
+
 }
-#endif // 0
 
-object_t parseIntoObject(object_t obj, string input, grammar_t gram) {
+option(obj_t_value_t) parseRegularRule(iterstring_t *is, grammar_rule_t *rule) {}
+option(obj_t_value_t) parseAlternative(iterstring_t *is, grammar_rule_t *rule) {}
+option(obj_t_value_t) parseOptional(iterstring_t *is, grammar_rule_t *rule) {}
+option(obj_t_value_t) parseArray(iterstring_t *is, grammar_rule_t *rule) {}
+
+object_t parseIntoObject(object_t obj, string input, grammar_t *gram, string start_rule) {
+    iterstring_t is = { .str = input, .index = 0, .previous = 0 };
+
+    option(size_t) start_idx = findGrammarRule(gram, &start_rule);
+    if(!start_idx.valid) {
+        fprintf(stderr, "Start rule '%s' not found in grammar\n", start_rule.at);
+        return obj;
+    }
+
+    grammar_or_string_rule_t *entry = &gram->at[start_idx.value].second;
+
+    // go through the entry, it should have at least one key
+    if(entry->gram_or_str == is_grammar_rule) {
+
+        dynarray(sr_pair) rules = createDynArray(sr_pair);
+
+    } else { // we cant start with a string parsing rule
+        fprintf(stderr, "first rule can not be string rule\n");
+    }
+
+    option(obj_t_value_t) result = parseGrammarOrStringRule(&is, entry);
+    if(!result.valid) {
+        fprintf(stderr, "Failed to parse input\n");
+        return obj;
+    }
+
+    if(is.str.at[is.index] != '\0') {
+        fprintf(stderr, "Warning: parsing succeeded but %zu characters remain\n",
+                stringlen(is.str) - is.index);
+    }
+
+    if(result.value.discriminant == obj_t_obj) {
+        for(size_t i = 0; i < result.value.obj.count; i++) {
+            obj = insertObjectEntry(obj, result.value.obj.key[i], result.value.obj.value[i]);
+        }
+    } else {
+        obj = insertObjectEntry(obj, start_rule, result.value);
+    }
+
+    return obj;
+}
+
+object_t parseIntoObject_naw(object_t obj, string input, grammar_t *gram, string start_rule) {
+    iterstring_t is = { .str = input, .index = 0, .previous = 0 };
+    
+    option(size_t) start_idx = findGrammarRule(gram, &start_rule);
+    if(!start_idx.valid) {
+        fprintf(stderr, "Start rule '%s' not found in grammar\n", start_rule.at);
+        return obj;
+    }
+    
+    grammar_or_string_rule_t *start = &gram->at[start_idx.value].second;
+    
+    option(obj_t_value_t) result = parseGrammarOrStringRule(&is, start);
+    if(!result.valid) {
+        fprintf(stderr, "Failed to parse input\n");
+        return obj;
+    }
+    
+    if(is.str.at[is.index] != '\0') {
+        fprintf(stderr, "Warning: parsing succeeded but %zu characters remain\n",
+                stringlen(is.str) - is.index);
+    }
+    
+    if(result.value.discriminant == obj_t_obj) {
+        for(size_t i = 0; i < result.value.obj.count; i++) {
+            obj = insertObjectEntry(obj, result.value.obj.key[i], result.value.obj.value[i]);
+        }
+    } else {
+        obj = insertObjectEntry(obj, start_rule, result.value);
+    }
+    
+    return obj;
+}
+
+object_t _parseIntoObject(object_t obj, string input, grammar_t gram) {
 	// we assume that we are just appending results into the object that is 
 	// already created
 	iterstring_t is = { .str = input, .index = 0, .previous = 0 };
@@ -628,6 +903,5 @@ object_t parseIntoObject(object_t obj, string input, grammar_t gram) {
 }
 
 int main__test() {
-//    dbg("test\n");
     printf("test");
 }

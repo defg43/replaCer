@@ -554,10 +554,12 @@ string grammar[] = {
            " | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'"
            " | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'"
            " | '{' | '|' | '}' | '~'"),
-    string("digit -> '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'"),
+    string("digit -> #'0' | #'1' | #'2' | #'3' | #'4' | #'5' | #'6' | #'7' | #'8' | #'9'"),
     string("operator -> '+' | '-' | '*' | '/' | '%' | '++' | '--' | '==' | '!=' | '<' | '<=' | '>' | '>='"
        " | '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&&' | '||' | '!' | '&' | '|' | '^' | '~'"),
-    string("token -> #char? #char[] | #digit[]")
+    string("token -> #char? #char[] | #digit[]"),
+    string("num -> #digit[]"),
+    string("entry -> number:num")
 };
 
     option(grammar_t) testg = compileGrammar(lengthof(grammar), &grammar);
@@ -580,8 +582,16 @@ string grammar[] = {
         printf("failed to compile grammar\n");
     }
 
-	parseIntoObject(createEmptyObject(), string("test"), testg.value);
+	object_t obj = parseIntoObject(createEmptyObject(), string("123"), 
+		&testg.value, string("entry"));
 
+	string result = objectToJson(obj);
+	printf("%s\n", result.at);
+
+
+	destroyString(result);
+	destroyObject(obj);
+	
     // cleanup of strings
 
     foreach(string to_free of grammar) {
