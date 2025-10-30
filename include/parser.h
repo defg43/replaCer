@@ -88,6 +88,66 @@ typedef struct {
 	dynarray(grammar_entry_t) entry;
 } grammar_t;
 
+/*
+					    grammar_t
+				_________________________
+				|						|
+	      ----- |grammar_entry_t entry[]|
+		  |		|_______________________|
+		  |
+		  |
+		  |
+		  ---------> grammar_entry_t
+				_________________________
+				|						|
+	 		  	|	  string name;		|
+				|_______________________|
+				|						|
+				| rule_type_t rule_type |  => storage_not_set  |
+				|_______________________|     implicit_storage |
+				|  						|	  object_storage
+		  ----  | rule_node_t element[] |
+		  |		|_______________________|
+	 	  |
+		  |
+		  |
+		  --------->   rule_node_t
+				_________________________
+				|						|
+				|						|
+		  ----	|  rule_t alternative[] |
+		  |		|			/			|
+		  |---	|	   rule_t rule 		|
+		  |		|						|
+		  |		|_______________________|
+		  |		
+		  |
+		  |
+		  |
+		  --------->	rule_t
+				_________________________
+				|						|
+				|  type_modifier_t mod  |
+				|_______________________|
+				|						|
+				|  string storage_key?	|
+				|_______________________|
+				| ________rule_________	|
+				| |					  | |
+				| | string rule_name  | |
+				| |___________________| |
+   				| |					  | |
+				| |grammar_entry_t *ge| |
+				| |___________________| |
+				| 			/			|
+				| _______literal_______ |
+				| |					  | |
+				| |   string literal  | |
+				| |___________________| |
+				|_______________________|
+
+*/
+
 option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]);
 bool linkGrammar(grammar_t *gram);
 option(size_t) findGrammarEntry(grammar_t *gram, string *name);
