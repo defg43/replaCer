@@ -1,25 +1,3 @@
-/*
-grammar rules:
-'literal' parses a literal and dicards the output
-key:type parses a type of rule and stores the parsed result in 'key'
-key:type | key2:type2 parses either type and stores the result in key 
-	or parses type2 and stores the result in key2
-key:type? tries to parse type but if parsing fails key is not present
-key:type[] parses at least one occurence of type and stores it in key which is 
-	an array
-
-raw_string -> #type[] #type2? #'literal' | #'other literal' parsing rule for
-	raw strings that arent stored inside keys
-
-potential examples
-character -> 'a' | 'b' | 'c' | 'd' | 'e' | 'f'
-digit -> '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
-
-raw_string -> #character[] #digit[] #'!'?
-
-function_declartion -> return_type:C_type functionname:C_identifier '(' argument_list:argument[] ')' ';'
-*/
-
 #include <stdio.h>
 #include <stddef.h>
 #define DEBUG
@@ -776,11 +754,9 @@ option(obj_t_value_t) genericParserEntry(iterstring_t *is, struct grammar_or_str
                 obj_t_array_t arr = createEmptyArray();
                 option(obj_t_value_t) result = parseRegularRule(is, r);
 
-
-
                 do {
 
-                }
+                }while(1);
 
 
             break;

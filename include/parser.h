@@ -1,93 +1,112 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+/*
+// there are two types of rules
+
+// in the first rule elements do not specify their storage type the storage type is therefore implicitly a string
+// literals are appended to the a rule-local string that is the result of the rule
+// other entities such as arrays, objects and numbers are converted to strings and appended
+// for arrays each entry is converted to a string if needed and all strings are concatenated
+// objects are flattened and all values are concatenated, the keys are ignored
+char -> 'a' | 'b' | 'c' | 'd' ...
+
+// these rules can be nested and combined together; the outputs of subrules being concatenated together
+token -> char[] charOrDigit[]
+
+// the second rule specifies storage types for at least one element
+// these are entries in a Javascript object
+// the storage is specified with a key and an asociated rule in the form of key:rule
+// the result of the rule will be stored under the key
+// these key value pairs are collected in a rule-local Javascript object and is the result of the rule
+// if some elements dont provide a storage specifier they are executed but their output is discarded
+rule -> t1:token '(' t2:token ')'
+
+the modifiers are [] which searches for at least one or more occurences, ? 
+which looks for one or none occurences
+
+in addition there are alternatives that can be used between elements where only one alternative 
+needs to succeed. The first matched alternative has priority; matching will stop after the first
+successfull match
+*/
+
 #include "../CSTL/include/cstl.h"
 #include "../ion/str/include/str.h"
+#include "../ion/include/ion.h"
+#include <stdio.h>
 
-typedef struct grammar_rule_t grammar_rule_t;
-typedef struct grammar_or_string_rule grammar_or_string_rule_t;
+typedef enum {
+	storage_type_not_set = 0, // missed during compilation
+	implicit_storage = 1,
+	objct_storage = 2,	
+} rule_type_t;
 
 typedef	enum {
-		modifier_none     = 0b00,
-		modifier_array 	  = 0b01,
-		modifier_optional = 0b10,
-		modifier_both	  = 0b11,
+	modifier_none     = 0b00,
+	modifier_array 	  = 0b01,
+	modifier_optional = 0b10,
+	modifier_both	  = 0b11,
 } type_modifier_t;
 
-typedef enum {
-	is_literal = 1,
-	is_rule = 2,
-} literal_or_rule_t;
-
-typedef enum {
-	is_next = 1, 
-	is_alternative = 2,
-} alt_or_next_t;
-
-struct grammar_rule_t {
-	literal_or_rule_t literal_or_rule;
-	union {
-		string literal;
-		struct {
-			string key_name; 
-			string rule_name;
-			grammar_or_string_rule_t *grammar;
-		};
-	};
-	type_modifier_t modifier;
-	alt_or_next_t next_or_alternative;
-    union {
-       	grammar_rule_t *next;
-    	grammar_rule_t *alternative;
-    };
-};
-
-typedef struct string_parse_rule_t string_parse_rule_t;
-
-struct grammar_or_string_rule {
-	enum {
-		is_grammar_rule = 1,
-		is_string_rule = 2,
-	} gram_or_str;
-	union {
-		grammar_rule_t *gram;
-		string_parse_rule_t *str;
-	};
-};
-
-struct string_parse_rule_t {
-	literal_or_rule_t literal_or_rule;
-	union {
-		struct {
-			string rule_name;
-			grammar_or_string_rule_t *grammar;
-		};	
-		string literal;
-	};
-	type_modifier_t modifier;
-	alt_or_next_t next_or_alternative;
-	union {
-		string_parse_rule_t *next;
-		string_parse_rule_t *alternative;
-	};
-}; 
+typedef struct gramma_entry_t grammar_entry_t;
 
 typedef struct {
-	pair(string, grammar_or_string_rule_t) *at;
-	size_t count; 
+	type_modifier_t type_mod;
+	option(string) storage_key; // if none, then discard output
+	enum {
+		is_literal,
+		is_rule,
+	} literal_or_rule;
+	union {
+		struct {
+			string rule_name; // produces
+			grammar_entry_t *ge;
+		};
+		string literal;
+	};
+	
+} rule_t;
+
+typedef struct {
+	enum {
+		is_regular,
+		has_alternative,
+	} alternative_or_regular;
+	union {
+		dynarray(rule_t) alternative;
+		rule_t rule;
+	};
+} rule_node_t;
+
+struct grammar_entry_t {
+	string name;
+	rule_type_t rule_type;
+	dynarray(rule_node_t) element;
+};
+
+typedef struct {
+	dynarray(grammar_entry_t) entry;
 } grammar_t;
 
-type_modifier_t parseTypeModifier(iterstring_t *rule);
-bool linkGrammar(grammar_t *gram);
 option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]);
-option(grammar_rule_t) parseGrammarRule(iterstring_t *rule);
+bool linkGrammar(grammar_t *gram);
+option(size_t) findGrammarEntry(grammar_t *gram, string *name);
+
+type_modifier_t parseTypeModifier(iterstring_t *rule);
 option(string) parseLiteral(iterstring_t *rule);
-option(string) parseGrammarKey(iterstring_t *rule);
-option(string) parseGrammarType(iterstring_t *rule);
+option(string) parseIdentifier(iterstring_t *rule);
 bool parseWhitespace(iterstring_t *rule);
 bool parseSeperator(iterstring_t *rule);
 bool isFollowedByAlternative(iterstring_t *rule);
-void printParsingMessage(FILE *stream, char *msg, string source,const char *const color, size_t color_start, size_t color_stop);
+
+option(rule_t) compileRule(iterstring_t *rule);
+option(rule_node_t) compileRuleNode(iterstring_t *rule);
+option(grammar_entry_t) compileGrammarEntry(string rule_definition);
 
 object_t parseIntoObject(object_t obj, string input, grammar_t *gram, string start_rule);
+
+void printParsingMessage(FILE *stream, char *msg, string source, const char *const color, size_t color_start, size_t color_stop);
+void printGrammar(grammar_t gram);
+void destroyGrammar(grammar_t *gram);
+
 #endif // PARSER_H
