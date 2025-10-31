@@ -124,7 +124,7 @@ typedef struct {
 		  |
 		  |
 		  |
-		  --------->	rule_t
+		  --------->	 rule_t
 				_________________________
 				|						|
 				|  type_modifier_t mod  |
@@ -147,6 +147,19 @@ typedef struct {
 				|_______________________|
 
 */
+/*
+
+example -> key1:rule1[] rule2 'literal' key2:'literal2' | key3:'iteral3'
+|----------------------------------------------------------------------| grammar_entry_t
+|-----| grammar_entry_t.name
+		   |-----------------------------------------------------------| grammar_entry_t.element[]
+		   |----------| rule_node_t.rule
+		   |--| 	    rule_t.storage_key
+		   	   |----|	rule_t.rule_name
+		   	   		 || rule_t.mod
+		   	   		 					|------------------------------| rule_t.alternative[]
+*/
+
 
 option(grammar_t) compileGrammar(size_t count, typeof(string) (*rules)[count]);
 bool linkGrammar(grammar_t *gram);
