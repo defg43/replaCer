@@ -161,7 +161,6 @@ bool isFollowedByAlternative(iterstring_t *rule) {
 }
 
 option(rule_t) compileRule(iterstring_t *rule) {
-	// first we either parse a string literal or 
 	option(string) res;
 	if((res = parseLiteral(rule)).valid) {
 		// literal without storage
@@ -178,7 +177,58 @@ option(rule_t) compileRule(iterstring_t *rule) {
 	return (option(rule_t)) none;
 }
 
-option(rule_node_t) compileRuleNode(iterstring_t *rule);
+option(rule_t) compileRule(iterstring_t *rule) {
+    parseWhitespace(rule);
+    
+    option(string) res;
+    
+    if((res = parseLiteral(rule)).valid) {
+        rule_t ret = {
+            .storage_key = none,
+            .literal_or_rule = is_literal,
+            .literal = res.value,
+            .type_mod = parseTypeModifier(rule),		
+        };
+        return (option(rule_t)) some(ret);
+    }
+    
+    if((res = parseIdentifier(rule)).valid) {
+        parseWhitespace(rule);
+        
+        if(rule->str.at[rule->index] == ':') {
+            rule->index++;
+            iterstringAdvance(rule);
+            parseWhitespace(rule);
+            
+            option(string) rule_name = parseIdentifier(rule);
+            if(!rule_name.valid) {
+                destroyString(res.value);
+                return (option(rule_t)) none;
+            }
+            
+            rule_t ret = {
+                .storage_key = some(res.value),
+                .literal_or_rule = is_rule,
+                .rule_name = rule_name.value,
+                .ge = NULL,
+                .type_mod = parseTypeModifier(rule),
+            };
+            return (option(rule_t)) some(ret);
+        } else {
+            // Just a rule reference, no storage key
+            rule_t ret = {
+                .storage_key = none,
+                .literal_or_rule = is_rule,
+                .rule_name = res.value,
+                .ge = NULL,
+                .type_mod = parseTypeModifier(rule),
+            };
+            return (option(rule_t)) some(ret);
+        }
+    }   
+    return (option(rule_t)) none;
+}
+
 option(grammar_entry_t) compileGrammarEntry(string rule_definition);
 
 object_t parseIntoObject(object_t obj, string input, grammar_t *gram, string start_rule);
