@@ -38,7 +38,7 @@ successfull match
 typedef enum {
 	storage_type_not_set = 0, // missed during compilation
 	implicit_storage = 1,
-	objct_storage = 2,	
+	object_storage = 2,	
 } rule_type_t;
 
 typedef	enum {
@@ -48,7 +48,7 @@ typedef	enum {
 	modifier_both	  = 0b11,
 } type_modifier_t;
 
-typedef struct gramma_entry_t grammar_entry_t;
+typedef struct grammar_entry grammar_entry_t;
 
 typedef struct {
 	type_modifier_t type_mod;
@@ -78,7 +78,7 @@ typedef struct {
 	};
 } rule_node_t;
 
-struct grammar_entry_t {
+struct grammar_entry {
 	string name;
 	rule_type_t rule_type;
 	dynarray(rule_node_t) element;

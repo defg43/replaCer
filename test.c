@@ -6,20 +6,6 @@
 #include <dlfcn.h>
 #undef __USE_GNU
 
-#define unittest(R, I) struct unittest_##R##_##I {  \
-    typeof(R (*)(I)) testfn;                        \
-    R expected;                                     \
-    I arg;                                          \
-}
-
-typedef struct {
-    typeof(option(string) (*)(iterstring_t *)) testfn;
-    option(string) expected;
-    iterstring_t *arg;
-} parserTest_t;
-
-void printGrammarRule_t(grammar_rule_t to_print);
-
 void printIndent(int level) {
     for (int i = 0; i < level; ++i) {
         printf("  ");
@@ -31,118 +17,69 @@ void printTypeModifier(type_modifier_t mod) {
         case modifier_both:     printf("[]?"); break;
         case modifier_array:    printf("[]");  break;
         case modifier_optional: printf("?");   break;
-		case modifier_none: 
+        case modifier_none: 
         default: break;
     }
 }
 
-void printGrammarRule_t(grammar_rule_t to_print) {
-    if (to_print.literal_or_rule == is_literal) {
-        printf("literal: '%s'", to_print.literal);
-    } else if (to_print.literal_or_rule == is_rule) {
-        printf("rule: %s : %s", to_print.key_name, to_print.rule_name);
+void printRule_t(rule_t rule) {
+    if(rule.storage_key.valid) {
+        printf("%s:", rule.storage_key.value.at);
+    }
+    
+    if(rule.literal_or_rule == is_literal) {
+        printf("'%s'", rule.literal.at);
     } else {
-        printf("invalid");
+        printf("%s", rule.rule_name.at);
     }
-    printTypeModifier(to_print.modifier);
+    
+    printTypeModifier(rule.type_mod);
 }
 
-void printStringParseRule(string_parse_rule_t *rule, int level) {
-    while (rule) {
-        printIndent(level);
-        if (rule->literal_or_rule == is_literal) {
-            printf("literal: '%s'", rule->literal);
-        } else if (rule->literal_or_rule == is_rule) {
-            printf("rule: %s", rule->rule_name);
-        } else {
-            printf("invalid");
-        }
-
-        printTypeModifier(rule->modifier);
+void printRuleNode_t(rule_node_t node, int level) {
+    printIndent(level);
+    
+    if(node.alternative_or_regular == is_regular) {
+        printRule_t(node.rule);
         printf("\n");
-
-        if (rule->next_or_alternative == is_next) {
-            rule = rule->next;
-        } else if (rule->next_or_alternative == is_alternative) {
-            printIndent(level);
-            printf("| ");
-            rule = rule->alternative;
-        } else {
-            break;
+    } else {
+        printf("alternatives:\n");
+        for(size_t i = 0; i < node.alternative.count; i++) {
+            printIndent(level + 1);
+            printRule_t(node.alternative.at[i]);
+            if(i < node.alternative.count - 1) {
+                printf(" |");
+            }
+            printf("\n");
         }
     }
 }
 
-
-void printGrammarRuleTree(grammar_rule_t *rule, int level) {
-    while (rule) {
-        printIndent(level);
-        printGrammarRule_t(*rule);
-        printf("\n");
-
-        if (rule->next_or_alternative == is_next) {
-            rule = rule->next;
-        } else if (rule->next_or_alternative == is_alternative) {
-            printIndent(level);
-            printf("| ");
-            rule = rule->alternative;
-        } else {
-            break;
-        }
+void printGrammarEntry_t(grammar_entry_t entry) {
+    printf("%s -> ", entry.name.at);
+    printf("(%s) ", entry.rule_type == implicit_storage ? "string" : 
+                     entry.rule_type == object_storage ? "object" : "unset");
+    printf("%zu elements:\n", entry.element.count);
+    
+    for(size_t i = 0; i < entry.element.count; i++) {
+        printRuleNode_t(entry.element.at[i], 1);
     }
 }
 
-void printGrammar(grammar_t grammar) {
-	printf("entered printGrammar\n");
-    for (size_t i = 0; i < grammar.count; ++i) {
-        printf("name here is %s:\n", grammar.at[i].first);
-
-        grammar_or_string_rule_t *entry = &grammar.at[i].second;
-
-        if (entry->gram_or_str == is_grammar_rule) {
-            printGrammarRuleTree(entry->gram, 1);
-        } else if (entry->gram_or_str == is_string_rule) {
-            printStringParseRule(entry->str, 1);
-        } else {
-            printIndent(1);
-            printf("invalid rule type\n");
-        }
-
+void printGrammar(grammar_t gram) {
+    printf("Grammar with %zu entries:\n", gram.entry.count);
+    for(size_t i = 0; i < gram.entry.count; i++) {
+        printGrammarEntry_t(gram.entry.at[i]);
         printf("\n");
     }
 }
 
 void printOptionString(option(string) to_print) {
     if(to_print.valid) {
-        printf("some(\"%s\")", to_print.value);
+        printf("some(\"%s\")", to_print.value.at);
     } else {
         printf("none");
     }
-    return;
-}
-
-void printOptionGrammarRule_t(option(grammar_rule_t) to_print) {
-    if(to_print.valid) {
-        printf("some(");
-        printGrammarRule_t(to_print.value);
-        printf(")");
-    } else {
-        printf("none");
-    }
-}
-
-void testparserGrammarRule_t() {
-    string test = string("test_key : test_type");
-    iterstring_t t = {
-        .str = test,
-        .index = 0, 
-        .previous = 0,
-    };
-
-    option(grammar_rule_t) result = parseGrammarRule(&t);
-
-        printOptionGrammarRule_t(result);
-    destroyString(test);
 }
 
 option(string) testparseTypeModifier(iterstring_t *arg) {
@@ -175,8 +112,13 @@ option(string) testisFollowedByAlternative(iterstring_t *arg) {
     return testAdapter(isFollowedByAlternative, arg);
 }
 
+typedef struct {
+    typeof(option(string) (*)(iterstring_t *)) testfn;
+    option(string) expected;
+    iterstring_t *arg;
+} parserTest_t;
+
 void runTests(size_t count, parserTest_t (*tests)[count]) {
-    //static typeof(*tests[0]->testfn) prevfn = 0;
     foreach(parserTest_t test of *tests) {
         Dl_info info;
         if (!dladdr((void *)test.testfn, &info)) {
@@ -184,46 +126,41 @@ void runTests(size_t count, parserTest_t (*tests)[count]) {
         }
 
         option(string) actual_result = test.testfn(test.arg);
-        printf("%s(\"%s\") == ", info.dli_sname, test.arg->str);
+        printf("%s(\"%s\") == ", info.dli_sname, test.arg->str.at);
        
+        bool passed = false;
         if(test.expected.valid == actual_result.valid) {
             if(actual_result.valid == true) {
                 if(stringeql(actual_result.value, test.expected.value)) {
-                    goto test_passed;
-                } goto test_failed;
+                    passed = true;
+                }
+            } else {
+                passed = true;
             }
-        } else {
-            goto test_failed;
         }
 
-        test_passed:
+        if(passed) {
             printf("\033[32m");
             printOptionString(actual_result);
-            printf(" \u2714\033[0m\n");
-            continue;
-        test_failed:
+            printf(" ✓\033[0m\n");
+        } else {
             printf("\033[31m");
             printOptionString(actual_result);
-            printf(" \u2717\033[0m expected: \033[38;5;214m");
+            printf(" ✗\033[0m expected: \033[38;5;214m");
             printOptionString(test.expected);
-            printf("\033[0m\n");            
-            continue;
+            printf("\033[0m\n");
+        }
+        
+        if(actual_result.valid) {
+            destroyString(actual_result.value);
+        }
     }
 }
 
 int main() {
-#if 0
-	char *str = "test {var}, hihi";
-    dictionary_t test = dict({{"{var}", "abc123456789"}});
-	char *result = replaceSubstrings(str, test);
-	puts(result);
-
-    char *var;
-    destroyDictionary(test);
-    free(result);
-#else
     parserTest_t tests[] = {
-        [0] = {
+        // parseLiteral tests
+        {
             .testfn = parseLiteral,
             .expected = some(string("just a literal")), 
             .arg = &(iterstring_t) {
@@ -250,7 +187,6 @@ int main() {
                 .previous = 0,
             }
         },
-
         {
             .testfn = parseLiteral,
             .expected = none, 
@@ -269,8 +205,10 @@ int main() {
                 .previous = 0,
             }
         },
+        
+        // parseIdentifier tests
         {
-            .testfn = parseGrammarKey,
+            .testfn = parseIdentifier,
             .expected = none, 
             .arg = &(iterstring_t) {
                 .str = string("'literal'"),
@@ -279,7 +217,7 @@ int main() {
             },
         },
         {
-            .testfn = parseGrammarKey,
+            .testfn = parseIdentifier,
             .expected = some(string("key")), 
             .arg = &(iterstring_t) {
                 .str = string("key"),
@@ -288,7 +226,7 @@ int main() {
             }
         },
         {
-            .testfn = parseGrammarKey,
+            .testfn = parseIdentifier,
             .expected = none,
             .arg = &(iterstring_t) {
                 .str = string(""),
@@ -297,7 +235,7 @@ int main() {
             }
         },
         {
-            .testfn = parseGrammarKey,
+            .testfn = parseIdentifier,
             .expected = none, 
             .arg = &(iterstring_t) {
                 .str = string("8"),
@@ -305,6 +243,8 @@ int main() {
                 .previous = 0,
             }
         },
+        
+        // parseWhitespace tests
         {
             .testfn = testparseWhitespace,
             .expected = none, 
@@ -341,6 +281,8 @@ int main() {
                 .previous = 0,
             }
         },
+        
+        // parseSeperator tests
         {
             .testfn = testparseSeperator,
             .expected = none, 
@@ -377,6 +319,8 @@ int main() {
                 .previous = 0,
             }
         },
+        
+        // isFollowedByAlternative tests
         {
             .testfn = testisFollowedByAlternative,
             .expected = none,
@@ -431,6 +375,8 @@ int main() {
                 .previous = 0,
             }
         },
+        
+        // parseTypeModifier tests
         {
             .testfn = testparseTypeModifier,
             .expected = some(string("array")),
@@ -541,74 +487,50 @@ int main() {
         },
     };
 
+    printf("Running %zu tests...\n\n", lengthof(tests));
     runTests(lengthof(tests), &tests);
-    // testparserGrammarRule_t();
+    printf("\n");
 
-string grammar[] = {
-    string("char -> ' ' | '!' | '\"' | '#' | '$' | '%' | '&' | '\\'' | '(' | ')' | '*' | '+' | ',' | '-' | '.' | '/'"
-           // " | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'"
-           " | ':' | ';' | '<' | '=' | '>' | '?' | '@'"
-           " | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'"
-           " | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'"
-           " | '[' | '\\\\' | ']' | '^' | '_' | '`'"
-           " | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'"
-           " | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'"
-           " | '{' | '|' | '}' | '~'"),
-    string("digit -> #'0' | #'1' | #'2' | #'3' | #'4' | #'5' | #'6' | #'7' | #'8' | #'9'"),
-    string("operator -> '+' | '-' | '*' | '/' | '%' | '++' | '--' | '==' | '!=' | '<' | '<=' | '>' | '>='"
-       " | '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&&' | '||' | '!' | '&' | '|' | '^' | '~'"),
-    string("token -> #char? #char[] | #digit[]"),
-    string("num -> #digit[]"),
-    string("entry -> number:num")
-};
+    printf("=== Integration Test ===\n");
+    
+    string grammar[] = {
+        string("char -> 'a' | 'b' | 'c'"),
+        string("digit -> '0' | '1' | '2'"),
+        string("token -> char[] | digit[]"),
+        string("entry -> value:token")
+    };
+
 
     option(grammar_t) testg = compileGrammar(lengthof(grammar), &grammar);
     if(testg.valid) {
-        printf("grammar compilation successfull\n");
-        printf("count of grammars: %ld\n", testg.value.count);
-        printf("pointer is %p\n", testg.value.at[0].second.gram);
+        printf("✓ Grammar compilation successful\n");
+        printf("  Grammar has %zu entries\n\n", testg.value.entry.count);
+        
         printGrammar(testg.value);
-        printf("\n");
 
         bool success = linkGrammar(&testg.value);
         if(success) {
-        	printf("linking passed\n");
-        	printGrammar(testg.value); 
+            printf("✓ Linking passed\n\n");
         } else {
-        	printf("linking failed");
+            printf("✗ Linking failed\n\n");
         }
-        puts("\n");
+
+        object_t obj = parseIntoObject(createEmptyObject(), string("abc"), 
+            &testg.value, string("entry"));
+
+        string result = objectToJson(obj);
+        printf("Parse result: %s\n", result.at);
+
+        destroyString(result);
+        destroyObject(obj);
+        destroyGrammar(&testg.value);
     } else {
-        printf("failed to compile grammar\n");
+        printf("✗ Failed to compile grammar\n");
     }
-
-	object_t obj = parseIntoObject(createEmptyObject(), string("123"), 
-		&testg.value, string("entry"));
-
-	string result = objectToJson(obj);
-	printf("%s\n", result.at);
-
-
-	destroyString(result);
-	destroyObject(obj);
-	
-    // cleanup of strings
 
     foreach(string to_free of grammar) {
-    	printf("just freed the string %s\n", to_free);
-    	destroyString(to_free);
+        destroyString(to_free);
     }
     
-#endif
-
-/*    
-	printh("the first test string is {} and the second string is {}\n", "foostring", "barstring");
-	char *foo, *bar;
-    char *aaaaa;
-	printh("the foo is {foo} and bar is {bar}, the first was {foo}\n", foo = "test1", bar = "test2");
-	printh("{bar}{bar}{bar}\n", bar = "|----------------|");
-    printh("{aaaaa} e {aaaaa}e\n", aaaaa = "a");
-    printh("{} {} {}\n", "_", "_", "_");
-*/  
     return 0;
 }
