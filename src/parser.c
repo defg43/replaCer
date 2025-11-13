@@ -71,6 +71,7 @@ option(string) parseLiteral(iterstring_t *rule) {
 
 	if(rule->str.at[rule->index] != '\'') {
 	    iterstringReset(rule);
+	    destroyString(ret);
 	    return (option(string)) none;
 	}
 
@@ -93,6 +94,7 @@ option(string) parseIdentifier(iterstring_t *rule) {
 	    ret = appendChar(ret, rule->str.at[rule->index]);
 	    rule->index++;    
 	} else {
+		destroyString(ret);
 	    return (option(string)) none;
 	}
 
@@ -106,6 +108,7 @@ option(string) parseIdentifier(iterstring_t *rule) {
 
 	if(rule->index == rule->previous) {
 	    iterstringReset(rule);
+	    destroyString(ret);
 	    return (option(string)) none;
 	}
 
@@ -497,7 +500,6 @@ static option(obj_t_value_t) executeRule(iterstring_t *is, rule_t *rule, grammar
             .str = stringFromString(rule->literal)
         };
         return (option(obj_t_value_t)) some(ret);
-        
     } else {
         if(!rule->ge) {
             fprintf(stderr, "Unlinked rule reference\n");
@@ -554,12 +556,10 @@ static option(obj_t_value_t) executeRuleNode(iterstring_t *is, rule_node_t *node
         return executeRule(is, &node->rule, gram);
     } else {
         for(size_t i = 0; i < node->alternative.count; i++) {
-            size_t save_pos = is->index;
             option(obj_t_value_t) result = executeRule(is, &node->alternative.at[i], gram);
             if(result.valid) {
                 return result;
             }
-            is->index = save_pos;
             iterstringReset(is);
         }
         return (option(obj_t_value_t)) none;
@@ -578,7 +578,25 @@ static option(obj_t_value_t) executeGrammarEntry(iterstring_t *is, grammar_entry
             }
             
             string part = flattenToString(val.value);
+			
             result = appendString(result, part);
+
+            if(val.valid) {
+            	switch(val.value.discriminant) {
+            		case obj_t_string:
+            			destroyString(val.value.str);
+            		break;
+            		case obj_t_obj:
+            			destroyObject(val.value.obj);
+            		break;
+            		case obj_t_array:
+            			destroyArray(val.value.arr);
+            		break;
+            		default:
+            		// dc
+            		break;
+            	}
+            }
             destroyString(part);
         }
         
@@ -601,8 +619,8 @@ static option(obj_t_value_t) executeGrammarEntry(iterstring_t *is, grammar_entry
                     option(obj_t_value_t) val = executeRule(is, &node->alternative.at[j], gram);
                     if(val.valid) {
                         if(node->alternative.at[j].storage_key.valid) {
-                            result = insertObjectEntry(result, 
-                                node->alternative.at[j].storage_key.value, val.value);
+                        	string key_copy = node->alternative.at[j].storage_key.value;
+                            result = insertObjectEntry(result, key_copy, val.value);
                         }
                         matched = true;
                         break;
@@ -622,7 +640,8 @@ static option(obj_t_value_t) executeGrammarEntry(iterstring_t *is, grammar_entry
                 }
                 
                 if(node->rule.storage_key.valid) {
-                    result = insertObjectEntry(result, node->rule.storage_key.value, val.value);
+                 	string key_copy = stringFromString(node->rule.storage_key.value);
+                    result = insertObjectEntry(result, key_copy, val.value);
                 }
             }
         }
@@ -637,16 +656,18 @@ static option(obj_t_value_t) executeGrammarEntry(iterstring_t *is, grammar_entry
 
 object_t parseIntoObject(object_t obj, string input, grammar_t *gram, string start_rule) {
     iterstring_t is = { .str = input, .index = 0, .previous = 0 };
-    
     option(size_t) start_idx = findGrammarEntry(gram, &start_rule);
+
     if(!start_idx.valid) {
         fprintf(stderr, "Start rule '%s' not found in grammar\n", start_rule.at);
         return obj;
     }
+
     
     grammar_entry_t *start_entry = &gram->entry.at[start_idx.value];
-    
+
     option(obj_t_value_t) result = executeGrammarEntry(&is, start_entry, gram);
+
     if(!result.valid) {
         fprintf(stderr, "Failed to parse input\n");
         return obj;
@@ -659,12 +680,27 @@ object_t parseIntoObject(object_t obj, string input, grammar_t *gram, string sta
     
     if(result.value.discriminant == obj_t_obj) {
         for(size_t i = 0; i < result.value.obj.count; i++) {
-            obj = insertObjectEntry(obj, result.value.obj.key[i], result.value.obj.value[i]);
+        	obj = insertObjectEntry(obj, string(result.value.obj.key[i]), 
+            	obj_t_value_t_copy(result.value.obj.value[i]));
         }
     } else {
         obj = insertObjectEntry(obj, start_rule, result.value);
     }
-    
+
+	switch(result.value.discriminant) {
+	   	case obj_t_string:
+	   		destroyString(result.value.str);
+	   	break;
+	   	case obj_t_obj:
+	   		destroyObject(result.value.obj);
+	   	break;
+	   	case obj_t_array:
+	    	destroyArray(result.value.arr);
+	    break;
+	    default:
+	    // dc
+		break;
+	}
     return obj;
 }
 

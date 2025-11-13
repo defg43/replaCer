@@ -515,9 +515,16 @@ int main() {
             printf("✗ Linking failed\n\n");
         }
 
-        object_t obj = parseIntoObject(createEmptyObject(), string("abc"), 
-            &testg.value, string("entry"));
+		string abc = string("abc");
+		string entry = string("entry");
+		object_t empty_obj = createEmptyObject();
+		
+        object_t obj = parseIntoObject(empty_obj, abc, 
+            &testg.value, entry);
 
+		destroyString(abc);
+		destroyString(entry);
+		
         string result = objectToJson(obj);
         printf("Parse result: %s\n", result.at);
 
@@ -528,9 +535,16 @@ int main() {
         printf("✗ Failed to compile grammar\n");
     }
 
+
     foreach(string to_free of grammar) {
         destroyString(to_free);
     }
-    
+	// the test should probably be cleaned up
+	foreach(parserTest_t test of tests) {
+		if(test.expected.valid) {
+			destroyString(test.expected.value);
+		}
+		destroyString(test.arg->str);
+	}
     return 0;
 }
